@@ -1,6 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using DG.Tweening;
+using HarmonyLib;
 using UnityEngine;
 
 namespace RemoveCountdown;
@@ -20,6 +23,22 @@ internal static class MidRunState
     Frozen,
     Releasing,
   }
+
+  private readonly struct PendingHitSound
+  {
+    internal PendingHitSound(HitSound hitSound, double time, float volume)
+    {
+      HitSound = hitSound;
+      Time = time;
+      Volume = volume;
+    }
+
+    internal HitSound HitSound { get; }
+    internal double Time { get; }
+    internal float Volume { get; }
+  }
+
+  private static readonly FieldInfo HitSoundsDataField = AccessTools.Field(typeof(scrConductor), "hitSoundsData");
 
   private static StartPhase phase;
   private static scrController controller;
@@ -473,8 +492,7 @@ internal static class MidRunState
       metronomeSource.Play();
       metronomeRunning = true;
       Main.Log(
-        $"Started frozen-start metronome at {normalizedBpm:F3} BPM "
-          + $"(game countdown {originalBpm:F3} BPM)."
+        $"Started frozen-start metronome at {normalizedBpm:F3} BPM " + $"(game countdown {originalBpm:F3} BPM)."
       );
     }
     catch (Exception exception)
@@ -676,19 +694,70 @@ internal static class MidRunState
     // than conductor.dspTime. A frozen start rebuilds the schedule at the first
     // tile's PP instant, so that rule would discard the first hit sound (and
     // nearby sounds on very fast patterns) before the conductor can schedule
-    // them. Let the game's own checkpoint bounds, hitsound selection, offsets,
-    // holds, and volume logic build the complete schedule, then immediately
-    // restore the real DSP time used by gameplay.
+    // them. Build the complete schedule once to capture that first sound, then
+    // rebuild at the real DSP time so already elapsed countdown ticks stay out.
     double currentDspTime = conductor.dspTime;
+    PendingHitSound? missedHitSound = null;
     try
     {
       conductor.dspTime = double.NegativeInfinity;
+      conductor.PlayHitTimes();
+      missedHitSound = CaptureFirstMissedHitSound(currentDspTime);
+
+      // Rebuild once more at the real time. In particular, this discards old
+      // countdown ticks that would otherwise all play at once on the next frame.
+      conductor.dspTime = currentDspTime;
       conductor.PlayHitTimes();
     }
     finally
     {
       conductor.dspTime = currentDspTime;
     }
+
+    if (missedHitSound is PendingHitSound hitSound)
+    {
+      double playbackTime = Math.Max(currentDspTime, AudioSettings.dspTime);
+      AudioManager.Play("snd" + hitSound.HitSound, playbackTime, conductor.hitSoundGroup, hitSound.Volume);
+      Main.Log(
+        $"Restored frozen-start hit sound {hitSound.HitSound} "
+          + $"{playbackTime - hitSound.Time:F6}s after its scheduled time."
+      );
+    }
+  }
+
+  private static PendingHitSound? CaptureFirstMissedHitSound(double currentDspTime)
+  {
+    if (HitSoundsDataField?.GetValue(conductor) is not IEnumerable hitSoundsData)
+    {
+      return null;
+    }
+
+    foreach (object item in hitSoundsData)
+    {
+      if (item == null)
+      {
+        continue;
+      }
+
+      Type itemType = item.GetType();
+      FieldInfo hitSoundField = AccessTools.Field(itemType, "hitSound");
+      FieldInfo timeField = AccessTools.Field(itemType, "time");
+      FieldInfo volumeField = AccessTools.Field(itemType, "volume");
+      if (hitSoundField == null || timeField == null || volumeField == null)
+      {
+        continue;
+      }
+
+      double time = (double)timeField.GetValue(item);
+      if (time > currentDspTime)
+      {
+        return null;
+      }
+
+      return new PendingHitSound((HitSound)hitSoundField.GetValue(item), time, (float)volumeField.GetValue(item));
+    }
+
+    return null;
   }
 
   private static void PrimeSongSourcesAtFrozenTime()
