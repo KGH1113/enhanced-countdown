@@ -1,6 +1,7 @@
 using HarmonyLib;
+using RemoveCountdown.Bootstrap;
 
-namespace RemoveCountdown.Patches;
+namespace RemoveCountdown.Presentation.Patches;
 
 [HarmonyPatch(typeof(scrController), nameof(scrController.Start_Rewind))]
 internal static class StartRewindPatch
@@ -8,7 +9,7 @@ internal static class StartRewindPatch
   [HarmonyPrefix]
   private static void Prefix(scrController __instance, int _currentSeqID)
   {
-    MidRunState.OnStartRewind(__instance, _currentSeqID);
+    ModCompositionRoot.Coordinator?.OnStartRewind(__instance, _currentSeqID);
   }
 }
 
@@ -18,7 +19,7 @@ internal static class InitialScrubPatch
   [HarmonyPrefix]
   private static void Prefix(int floorNum, ref bool forceDontStartMusicFourTilesBefore)
   {
-    if (MidRunState.PrepareInitialScrub(floorNum))
+    if (ModCompositionRoot.Coordinator?.PrepareInitialScrub(floorNum) == true)
     {
       forceDontStartMusicFourTilesBefore = true;
     }
@@ -31,7 +32,7 @@ internal static class MusicScheduledPatch
   [HarmonyPostfix]
   private static void Postfix(scrController __instance)
   {
-    MidRunState.OnMusicScheduled(__instance);
+    ModCompositionRoot.Coordinator?.OnMusicScheduled(__instance);
   }
 }
 
@@ -41,6 +42,6 @@ internal static class PauseFrozenStartPatch
   [HarmonyPrefix]
   private static void Prefix(scrController __instance)
   {
-    MidRunState.OnPauseRequested(__instance);
+    ModCompositionRoot.Coordinator?.OnPauseRequested(__instance);
   }
 }

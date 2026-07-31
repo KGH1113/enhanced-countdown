@@ -1,5 +1,8 @@
 using System.Reflection;
 using HarmonyLib;
+using RemoveCountdown.Bootstrap;
+using RemoveCountdown.Infrastructure.Settings;
+using RemoveCountdown.Presentation;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -8,34 +11,30 @@ namespace RemoveCountdown;
 public static class Main
 {
   private static Harmony harmony;
-  private static UnityModManager.ModEntry modEntry;
   private static GameObject runtimeHostObject;
-
-  internal static void Log(string message)
-  {
-    modEntry?.Logger.Log(message);
-  }
-
-  internal static void LogError(string context, System.Exception exception)
-  {
-    modEntry?.Logger.Error($"[{context}] {exception}");
-  }
+  private static UpdateSettings updateSettings;
+  private static string updateSettingsPath;
 
   public static bool Load(UnityModManager.ModEntry entry)
   {
     try
     {
-      modEntry = entry;
+      updateSettingsPath = System.IO.Path.Combine(entry.Path, "UpdateSettings.json");
+      updateSettings = UpdateSettings.Load(updateSettingsPath);
+      ModCompositionRoot.Initialize(entry);
       harmony = new Harmony(entry.Info.Id);
       harmony.PatchAll(Assembly.GetExecutingAssembly());
       CreateRuntimeHost();
       entry.OnToggle = OnToggle;
       entry.OnUnload = OnUnload;
+      entry.OnGUI = OnGUI;
+      entry.OnSaveGUI = OnSaveGUI;
       entry.Logger.Log("RemoveCountdown loaded.");
       return true;
     }
     catch (System.Exception exception)
     {
+      ModCompositionRoot.Shutdown();
       entry.Logger.Error(exception.ToString());
       return false;
     }
@@ -57,6 +56,10 @@ public static class Main
   {
     if (enabled)
     {
+      if (ModCompositionRoot.Coordinator == null)
+      {
+        ModCompositionRoot.Initialize(entry);
+      }
       if (harmony == null)
       {
         harmony = new Harmony(entry.Info.Id);
@@ -72,13 +75,42 @@ public static class Main
 
   private static bool OnUnload(UnityModManager.ModEntry entry)
   {
+    SaveUpdateSettings(entry);
     Disable(entry);
     return true;
   }
 
+  private static void OnGUI(UnityModManager.ModEntry entry)
+  {
+    GUILayout.Label("Updates");
+    bool receiveBetaUpdates = GUILayout.Toggle(updateSettings.ReceiveBetaUpdates, "Receive beta updates");
+    GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
+    if (receiveBetaUpdates == updateSettings.ReceiveBetaUpdates)
+      return;
+    updateSettings.ReceiveBetaUpdates = receiveBetaUpdates;
+    SaveUpdateSettings(entry);
+  }
+
+  private static void OnSaveGUI(UnityModManager.ModEntry entry)
+  {
+    SaveUpdateSettings(entry);
+  }
+
+  private static void SaveUpdateSettings(UnityModManager.ModEntry entry)
+  {
+    try
+    {
+      updateSettings?.Save(updateSettingsPath);
+    }
+    catch (System.Exception exception)
+    {
+      entry.Logger.Error("[UpdateSettings] " + exception);
+    }
+  }
+
   private static void Disable(UnityModManager.ModEntry entry)
   {
-    MidRunState.Shutdown();
+    ModCompositionRoot.Shutdown();
     if (runtimeHostObject != null)
     {
       Object.Destroy(runtimeHostObject);

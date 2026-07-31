@@ -16,7 +16,7 @@ package_bytes="$(wc -c < "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH" | tr -d '[:space:]
 package_sha256="$(shasum -a 256 "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH" | awk '{print $1}')"
 
 mkdir -p "$(dirname "$REMOVE_COUNTDOWN_UPDATE_MANIFEST_PATH")"
-printf '{\n  "schemaVersion": 1,\n  "version": "%s",\n  "packageAsset": "RemoveCountdown.zip",\n  "packageBytes": %s,\n  "packageSha256": "%s",\n  "runtimePath": "RemoveCountdown"\n}\n' \
-  "$version" "$package_bytes" "$package_sha256" > "$REMOVE_COUNTDOWN_UPDATE_MANIFEST_PATH"
+printf '{\n  "schemaVersion": 1,\n  "version": "%s",\n  "packageAsset": "RemoveCountdown.zip",\n  "packageBytes": %s,\n  "packageSha256": "%s",\n  "runtimePath": "RemoveCountdown/Runtime/versions/%s"\n}\n' \
+  "$version" "$package_bytes" "$package_sha256" "$version" > "$REMOVE_COUNTDOWN_UPDATE_MANIFEST_PATH"
 
 printf 'Update manifest: %s\n' "$REMOVE_COUNTDOWN_UPDATE_MANIFEST_PATH"

@@ -2,7 +2,7 @@
   "Id": "RemoveCountdown",
   "DisplayName": "Remove Countdown",
   "Author": "KGH1113",
-  "Version": "0.1.0",
-  "AssemblyName": "RemoveCountdown.dll",
-  "EntryMethod": "RemoveCountdown.Main.Load"
+  "Version": "0.2.0",
+  "AssemblyName": "RemoveCountdown.Bootstrap.dll",
+  "EntryMethod": "RemoveCountdown.Launcher.Bootstrap.Load"
 }

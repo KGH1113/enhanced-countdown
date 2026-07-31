@@ -10,5 +10,8 @@ source "$SCRIPTS_DIR/lib/context.sh"
 source "$SCRIPTS_DIR/lib/logging.sh"
 
 run_task "Validate local build inputs" "$TASKS_DIR/validate/local-build-inputs.sh"
+run_task "Build bootstrap (Debug)" "$TASKS_DIR/build/bootstrap.sh" Debug
+run_task "Build update engine (Debug)" "$TASKS_DIR/build/update-engine.sh" Debug
 run_task "Build mod (Debug)" "$TASKS_DIR/build/mod.sh" Debug
+run_task "Run updater tests" "$TASKS_DIR/test/updater.sh"
 run_task "Install mod" "$TASKS_DIR/install/mod.sh"

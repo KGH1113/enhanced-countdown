@@ -12,18 +12,23 @@ Usage: ./scripts/run.sh <command>
 Commands:
   build       Build and install the mod
   package     Build the release package and metadata
+  publish     Validate and publish the package to GitHub Releases
   check       Validate all shell scripts
   help        Show this help
 USAGE
 }
 
 command_name="${1:-help}"
+shift || true
 case "$command_name" in
   build)
     exec "$SCRIPTS_DIR/workflows/build-install.sh"
     ;;
   package)
     exec "$SCRIPTS_DIR/workflows/package-release.sh"
+    ;;
+  publish)
+    exec "$SCRIPTS_DIR/workflows/publish-release.sh" "$@"
     ;;
   check)
     exec "$SCRIPTS_DIR/workflows/check-scripts.sh"
