@@ -9,7 +9,9 @@ internal sealed class UnityFrozenMetronome : IMetronome
 {
   private const double MinimumBpm = 200.0;
   private const double MaximumBpm = 500.0;
+  private const double SchedulingLeadSeconds = 0.05;
   private readonly IModLogger logger;
+  private UnityMetronomeDisplay metronomeDisplay;
   private GameObject metronomeObject;
   private AudioSource metronomeSource;
   private AudioClip metronomeLoopClip;
@@ -55,11 +57,13 @@ internal sealed class UnityFrozenMetronome : IMetronome
         return null;
       }
 
-      float[] loopSamples = new float[loopFrames * hatClip.channels];
-      Array.Copy(hatSamples, loopSamples, Math.Min(hatSamples.Length, loopSamples.Length));
+      int clickSampleCount = Math.Min(hatSamples.Length, loopFrames * hatClip.channels);
+      float[] loopSamples = new float[loopFrames * 2 * hatClip.channels];
+      Array.Copy(hatSamples, 0, loopSamples, 0, clickSampleCount);
+      Array.Copy(hatSamples, 0, loopSamples, loopFrames * hatClip.channels, clickSampleCount);
       metronomeLoopClip = AudioClip.Create(
         "RemoveCountdown Frozen Metronome",
-        loopFrames,
+        loopFrames * 2,
         hatClip.channels,
         hatClip.frequency,
         stream: false
@@ -78,12 +82,31 @@ internal sealed class UnityFrozenMetronome : IMetronome
       metronomeSource.outputAudioMixerGroup = conductor.hitSoundGroup;
       metronomeSource.ignoreListenerPause = true;
       metronomeSource.clip = metronomeLoopClip;
+      double clickInterval = (double)loopFrames / hatClip.frequency;
+      double dspStartTime = AudioSettings.dspTime + SchedulingLeadSeconds;
       double startedRealtime = Time.realtimeSinceStartupAsDouble;
-      metronomeSource.Play();
+      metronomeSource.PlayScheduled(dspStartTime);
+      var playback = new MetronomePlayback(
+        originalBpm,
+        normalizedBpm,
+        startedRealtime,
+        dspStartTime,
+        clickInterval,
+        loopFrames
+      );
+      try
+      {
+        metronomeDisplay = UnityMetronomeDisplay.Create(playback);
+      }
+      catch (Exception exception)
+      {
+        logger.LogError("Failed to create the frozen-start metronome display", exception);
+        metronomeDisplay = null;
+      }
       logger.Log(
         $"Started frozen-start metronome at {normalizedBpm:F3} BPM " + $"(game countdown {originalBpm:F3} BPM)."
       );
-      return new MetronomePlayback(originalBpm, normalizedBpm, startedRealtime);
+      return playback;
     }
     catch (Exception exception)
     {
@@ -93,9 +116,18 @@ internal sealed class UnityFrozenMetronome : IMetronome
     }
   }
 
+  public void UpdateDisplay()
+  {
+    if (metronomeDisplay != null && metronomeSource != null)
+    {
+      metronomeDisplay.Update(metronomeSource.timeSamples, metronomeSource.isPlaying);
+    }
+  }
+
   public void Stop(string reason = null)
   {
-    bool wasRunning = metronomeObject != null;
+    bool wasRunning = metronomeObject != null || metronomeDisplay != null;
+    metronomeDisplay?.Dispose();
     metronomeSource?.Stop();
     if (metronomeObject != null)
     {
@@ -106,6 +138,7 @@ internal sealed class UnityFrozenMetronome : IMetronome
       UnityEngine.Object.Destroy(metronomeLoopClip);
     }
 
+    metronomeDisplay = null;
     metronomeSource = null;
     metronomeObject = null;
     metronomeLoopClip = null;

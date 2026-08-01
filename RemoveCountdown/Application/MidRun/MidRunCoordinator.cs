@@ -190,6 +190,7 @@ internal sealed partial class MidRunCoordinator
   {
     if (IsFrozen)
     {
+      metronome.UpdateDisplay();
       visuals.UpdatePreLandingMotion();
     }
   }
