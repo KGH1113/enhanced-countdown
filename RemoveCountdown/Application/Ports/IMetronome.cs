@@ -1,7 +1,9 @@
+using RemoveCountdown.Domain.MidRun;
+
 namespace RemoveCountdown.Application.Ports;
 
 internal interface IMetronome
 {
-  void Start();
+  MetronomePlayback? Start();
   void Stop(string reason = null);
 }

@@ -72,12 +72,12 @@ internal sealed class FrozenStartPreparer
     visuals.ScrubToTime(session.FrozenSongPosition);
     audioTimeline.PrimeSongSources();
     audioTimeline.PauseListener();
-    visuals.ApplyPreLandingOffset();
     visuals.HideStartUi(session.Controller);
 
     session.FrozenFrame = gameWorld.CurrentFrame;
     session.Phase = FrozenStartPhase.Frozen;
-    metronome.Start();
+    MetronomePlayback? playback = metronome.Start();
+    visuals.StartPreLandingMotion(playback);
     logger.Log(
       $"Frozen editor start at tile {gameWorld.GetCurrentFloorId(primary)}, "
         + $"song time {session.FrozenSongPosition:F6}, audio time {session.FrozenAudioSongPosition:F6}, "

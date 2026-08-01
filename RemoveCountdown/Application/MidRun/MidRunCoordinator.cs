@@ -159,7 +159,8 @@ internal sealed partial class MidRunCoordinator
     if (!moved)
     {
       runtimeRestorer.RefreezeAfterRejectedInput(session);
-      metronome.Start();
+      MetronomePlayback? playback = metronome.Start();
+      visuals.StartPreLandingMotion(playback);
       return;
     }
 
@@ -182,6 +183,14 @@ internal sealed partial class MidRunCoordinator
     if (gameWorld.IsAsyncInputActive)
     {
       gameWorld.UpdateInput(session.Controller);
+    }
+  }
+
+  internal void PumpFrozenVisuals()
+  {
+    if (IsFrozen)
+    {
+      visuals.UpdatePreLandingMotion();
     }
   }
 

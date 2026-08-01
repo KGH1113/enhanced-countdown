@@ -17,7 +17,7 @@ internal static class ModCompositionRoot
     var audioTimeline = new AdofaiAudioTimeline(logger);
     var hitSounds = new AdofaiHitSoundScheduler(new ConductorHitSoundAccessor(), logger);
     var metronome = new UnityFrozenMetronome(logger);
-    var visuals = new UnityFrozenVisuals();
+    var visuals = new UnityFrozenVisuals(logger);
     var startPreparer = new FrozenStartPreparer(gameWorld, audioTimeline, metronome, visuals, logger);
     var runtimeRestorer = new FrozenRuntimeRestorer(audioTimeline, hitSounds, visuals, logger);
     Coordinator = new MidRunCoordinator(

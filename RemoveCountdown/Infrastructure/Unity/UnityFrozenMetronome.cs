@@ -1,5 +1,6 @@
 using System;
 using RemoveCountdown.Application.Ports;
+using RemoveCountdown.Domain.MidRun;
 using UnityEngine;
 
 namespace RemoveCountdown.Infrastructure.Unity;
@@ -18,20 +19,20 @@ internal sealed class UnityFrozenMetronome : IMetronome
     this.logger = logger;
   }
 
-  public void Start()
+  public MetronomePlayback? Start()
   {
     Stop();
     scrConductor conductor = ADOBase.conductor;
     if (conductor == null)
     {
-      return;
+      return null;
     }
 
     double originalInterval = Math.Abs(conductor.GetCountdownTime(1) - conductor.GetCountdownTime(0));
     if (originalInterval <= 0.0 || double.IsNaN(originalInterval) || double.IsInfinity(originalInterval))
     {
       logger.Log("Skipped the frozen-start metronome because the game returned an invalid countdown interval.");
-      return;
+      return null;
     }
 
     double originalBpm = 60.0 / originalInterval;
@@ -42,7 +43,7 @@ internal sealed class UnityFrozenMetronome : IMetronome
       if (hatClip == null)
       {
         logger.Log("Skipped the frozen-start metronome because sndHat could not be loaded.");
-        return;
+        return null;
       }
 
       double interval = 60.0 / normalizedBpm;
@@ -51,7 +52,7 @@ internal sealed class UnityFrozenMetronome : IMetronome
       if (!hatClip.GetData(hatSamples, 0))
       {
         logger.Log("Skipped the frozen-start metronome because sndHat sample data is unavailable.");
-        return;
+        return null;
       }
 
       float[] loopSamples = new float[loopFrames * hatClip.channels];
@@ -77,15 +78,18 @@ internal sealed class UnityFrozenMetronome : IMetronome
       metronomeSource.outputAudioMixerGroup = conductor.hitSoundGroup;
       metronomeSource.ignoreListenerPause = true;
       metronomeSource.clip = metronomeLoopClip;
+      double startedRealtime = Time.realtimeSinceStartupAsDouble;
       metronomeSource.Play();
       logger.Log(
         $"Started frozen-start metronome at {normalizedBpm:F3} BPM " + $"(game countdown {originalBpm:F3} BPM)."
       );
+      return new MetronomePlayback(originalBpm, normalizedBpm, startedRealtime);
     }
     catch (Exception exception)
     {
       logger.LogError("Failed to start the frozen-start metronome", exception);
       Stop("startup failed");
+      return null;
     }
   }
 
