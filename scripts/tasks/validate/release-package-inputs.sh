@@ -14,7 +14,13 @@ require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
 require_file "$ADOFAI_MANAGED/UnityEngine.IMGUIModule.dll"
+require_file "$ADOFAI_MANAGED/UnityEngine.AssetBundleModule.dll"
+require_file "$ADOFAI_MANAGED/UnityEngine.InputLegacyModule.dll"
+require_file "$ADOFAI_MANAGED/Unity.TextMeshPro.dll"
 require_file "$REMOVE_COUNTDOWN_PROJECT_ROOT/RemoveCountdown/RemoveCountdown.csproj"
 require_file "$REMOVE_COUNTDOWN_PROJECT_ROOT/RemoveCountdown.Bootstrap/RemoveCountdown.Bootstrap.csproj"
 require_file "$REMOVE_COUNTDOWN_PROJECT_ROOT/RemoveCountdown.UpdateEngine/RemoveCountdown.UpdateEngine.csproj"
 require_file "$REMOVE_COUNTDOWN_PROJECT_ROOT/RemoveCountdown/Info.json"
+for platform in mac win linux; do
+  require_file "$REMOVE_COUNTDOWN_ASSET_SOURCE/$platform/enhancedcountdown_ui.bundle"
+done

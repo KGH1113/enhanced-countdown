@@ -18,6 +18,9 @@ require_file "$REMOVE_COUNTDOWN_PACKAGE_STAGE/Runtime/state.json"
 require_file "$runtime/Info.json"
 require_file "$runtime/RemoveCountdown.dll"
 require_file "$runtime/RemoveCountdown.UpdateEngine.dll"
+for platform in mac win linux; do
+  require_file "$runtime/Assets/$platform/enhancedcountdown_ui.bundle"
+done
 
 grep -Fq "\"Current\": \"$version\"" "$REMOVE_COUNTDOWN_PACKAGE_STAGE/Runtime/state.json" || fail "Package state does not select $version."
 grep -Fq '"SchemaVersion": 2' "$REMOVE_COUNTDOWN_PACKAGE_STAGE/Runtime/state.json" || fail "Package state schema is invalid."

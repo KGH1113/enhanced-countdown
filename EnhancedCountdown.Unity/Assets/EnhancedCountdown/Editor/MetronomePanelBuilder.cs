@@ -22,6 +22,8 @@ namespace EnhancedCountdown.Editor
         private const string PrefabRoot = AssetRoot + "/Prefabs";
         private const string ResourcesRoot = "Assets/TextMesh Pro/Resources";
         private const string PanelSpritePath = ArtRoot + "/rounded-panel.png";
+        private const string ToggleTrackSpritePath = ArtRoot + "/toggle-pill.png";
+        private const string ToggleKnobSpritePath = ArtRoot + "/toggle-knob.png";
         private const string FontSourcePath = FontRoot + "/MAPLESTORY_OTF_BOLD.OTF";
         private const string FontAssetPath = FontRoot + "/MAPLESTORY_OTF_BOLD Dynamic SDF.asset";
         private const string PrefabPath = PrefabRoot + "/MetronomeControlPanel.prefab";
@@ -54,6 +56,7 @@ namespace EnhancedCountdown.Editor
 
             EnsureAssetFolders();
             EnsureRoundedPanelArt();
+            EnsureToggleArt();
             TMP_FontAsset font = EnsureFontAsset();
             CreatePanelPrefab(font);
             CreatePreviewScene();
@@ -81,6 +84,27 @@ namespace EnhancedCountdown.Editor
             BuildBundle(BuildTarget.StandaloneLinux64, "linux");
         }
 
+        [MenuItem("Enhanced Countdown/UI/Build macOS UI Bundle")]
+        public static void BuildMacBundle()
+        {
+            RebuildPanelAndPreview();
+            BuildBundle(BuildTarget.StandaloneOSX, "mac");
+        }
+
+        [MenuItem("Enhanced Countdown/UI/Build Windows UI Bundle")]
+        public static void BuildWindowsBundle()
+        {
+            RebuildPanelAndPreview();
+            BuildBundle(BuildTarget.StandaloneWindows64, "win");
+        }
+
+        [MenuItem("Enhanced Countdown/UI/Build Linux UI Bundle")]
+        public static void BuildLinuxBundle()
+        {
+            RebuildPanelAndPreview();
+            BuildBundle(BuildTarget.StandaloneLinux64, "linux");
+        }
+
         private static void BuildBundle(BuildTarget target, string platformFolder)
         {
             string outputDirectory = Path.Combine(ProjectRoot, "Build", "AssetBundles", platformFolder);
@@ -93,15 +117,22 @@ namespace EnhancedCountdown.Editor
             {
                 throw new InvalidOperationException($"Failed to build the {platformFolder} UI bundle.");
             }
-            Debug.Log($"Built {target} UI bundle at {Path.Combine(outputDirectory, BundleName)}");
+            string builtBundle = Path.Combine(outputDirectory, BundleName);
+            string runtimeDirectory = Path.Combine(RuntimeAssetRoot, platformFolder);
+            Directory.CreateDirectory(runtimeDirectory);
+            string runtimeBundle = Path.Combine(runtimeDirectory, BundleName);
+            File.Copy(builtBundle, runtimeBundle, true);
+            Debug.Log($"Built {target} UI bundle at {builtBundle} and copied it to {runtimeBundle}");
         }
 
         private static void CreatePanelPrefab(TMP_FontAsset font)
         {
             Sprite panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>(PanelSpritePath);
-            if (panelSprite == null)
+            Sprite toggleTrackSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ToggleTrackSpritePath);
+            Sprite toggleKnobSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ToggleKnobSpritePath);
+            if (panelSprite == null || toggleTrackSprite == null || toggleKnobSprite == null)
             {
-                throw new InvalidOperationException("The rounded panel sprite is unavailable.");
+                throw new InvalidOperationException("One or more metronome UI sprites are unavailable.");
             }
 
             GameObject overlay = new GameObject(
@@ -128,8 +159,8 @@ namespace EnhancedCountdown.Editor
                     new Vector2(1f, 0f),
                     new Vector2(1f, 0f),
                     new Vector2(1f, 0f),
-                    new Vector2(-32f, 32f),
-                    new Vector2(480f, 380f));
+                    new Vector2(-24f, 24f),
+                    new Vector2(360f, 285f));
                 panel.type = Image.Type.Sliced;
                 panel.raycastTarget = true;
 
@@ -144,22 +175,28 @@ namespace EnhancedCountdown.Editor
                     new Vector2(1f, 1f),
                     new Vector2(0.5f, 1f),
                     new Vector2(0f, -1f),
-                    new Vector2(-40f, 1f));
+                    new Vector2(-30f, 1f));
 
                 CreateText(
                     "HeaderText",
                     panel.transform,
                     font,
                     "METRONOME",
-                    20f,
+                    15f,
                     FontStyles.Bold,
                     AccentColor,
                     TextAlignmentOptions.MidlineLeft,
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(28f, -20f),
-                    new Vector2(424f, 28f));
+                    new Vector2(21f, -15f),
+                    new Vector2(240f, 21f));
+
+                CreateEnabledToggle(
+                    panel.transform,
+                    toggleTrackSprite,
+                    toggleKnobSprite,
+                    new Vector2(292f, -12.5f));
 
                 Image headerDivider = CreateImage("HeaderDivider", panel.transform, null, new Color(1f, 1f, 1f, 0.09f));
                 SetRect(
@@ -167,30 +204,30 @@ namespace EnhancedCountdown.Editor
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(28f, -62f),
-                    new Vector2(424f, 1f));
+                    new Vector2(21f, -46.5f),
+                    new Vector2(318f, 1f));
 
                 CreateText(
                     "BpmLabel",
                     panel.transform,
                     font,
                     "CLICK BPM",
-                    17f,
+                    12.75f,
                     FontStyles.Bold,
                     SecondaryTextColor,
                     TextAlignmentOptions.MidlineLeft,
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(28f, -76f),
-                    new Vector2(424f, 22f));
+                    new Vector2(21f, -57f),
+                    new Vector2(318f, 16.5f));
 
                 CreateBpmInput(panel.transform, panelSprite, font);
 
-                CreateActionButton("Divide2Button", panel.transform, panelSprite, font, "÷2", new Vector2(28f, -188f));
-                CreateActionButton("Multiply2Button", panel.transform, panelSprite, font, "×2", new Vector2(136f, -188f));
-                CreateActionButton("Divide3Button", panel.transform, panelSprite, font, "÷3", new Vector2(244f, -188f));
-                CreateActionButton("Multiply3Button", panel.transform, panelSprite, font, "×3", new Vector2(352f, -188f));
+                CreateActionButton("Divide2Button", panel.transform, panelSprite, font, "÷2", new Vector2(21f, -141f));
+                CreateActionButton("Multiply2Button", panel.transform, panelSprite, font, "×2", new Vector2(102f, -141f));
+                CreateActionButton("Divide3Button", panel.transform, panelSprite, font, "÷3", new Vector2(183f, -141f));
+                CreateActionButton("Multiply3Button", panel.transform, panelSprite, font, "×3", new Vector2(264f, -141f));
 
                 Image sectionDivider = CreateImage("SectionDivider", panel.transform, null, new Color(1f, 1f, 1f, 0.09f));
                 SetRect(
@@ -198,40 +235,40 @@ namespace EnhancedCountdown.Editor
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(28f, -254f),
-                    new Vector2(424f, 1f));
+                    new Vector2(21f, -190.5f),
+                    new Vector2(318f, 1f));
 
                 CreateText(
                     "TimeSignatureLabel",
                     panel.transform,
                     font,
                     "TIME SIGNATURE",
-                    17f,
+                    12.75f,
                     FontStyles.Bold,
                     SecondaryTextColor,
                     TextAlignmentOptions.MidlineLeft,
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(28f, -274f),
-                    new Vector2(424f, 22f));
+                    new Vector2(21f, -205.5f),
+                    new Vector2(318f, 16.5f));
 
-                CreateDropdown("NumeratorDropdown", panel.transform, panelSprite, font, new Vector2(52f, -306f));
+                CreateDropdown("NumeratorDropdown", panel.transform, panelSprite, font, new Vector2(39f, -229.5f));
                 CreateText(
                     "TimeSignatureSlash",
                     panel.transform,
                     font,
                     "/",
-                    34f,
+                    25.5f,
                     FontStyles.Normal,
                     PrimaryTextColor,
                     TextAlignmentOptions.Center,
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(220f, -306f),
-                    new Vector2(40f, 52f));
-                CreateDropdown("DenominatorDropdown", panel.transform, panelSprite, font, new Vector2(268f, -306f));
+                    new Vector2(165f, -229.5f),
+                    new Vector2(30f, 39f));
+                CreateDropdown("DenominatorDropdown", panel.transform, panelSprite, font, new Vector2(201f, -229.5f));
 
                 GameObject prefab = PrefabUtility.SaveAsPrefabAsset(overlay, PrefabPath);
                 if (prefab == null)
@@ -257,8 +294,8 @@ namespace EnhancedCountdown.Editor
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
-                new Vector2(28f, -102f),
-                new Vector2(424f, 74f));
+                new Vector2(21f, -76.5f),
+                new Vector2(318f, 55.5f));
             background.type = Image.Type.Sliced;
             background.raycastTarget = true;
 
@@ -271,6 +308,7 @@ namespace EnhancedCountdown.Editor
             input.selectionColor = new Color(AccentColor.r / 255f, AccentColor.g / 255f, AccentColor.b / 255f, 0.42f);
             input.caretColor = AccentColor;
             input.customCaretColor = true;
+            input.navigation = new Navigation { mode = Navigation.Mode.None };
 
             GameObject viewport = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
             viewport.transform.SetParent(background.transform, false);
@@ -280,23 +318,23 @@ namespace EnhancedCountdown.Editor
                 Vector2.zero,
                 Vector2.one,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(-42f, 0f),
-                new Vector2(-108f, -12f));
+                new Vector2(-31.5f, 0f),
+                new Vector2(-81f, -9f));
 
             TextMeshProUGUI inputText = CreateText(
                 "Text",
                 viewport.transform,
                 font,
                 "240.0",
-                42f,
+                31.5f,
                 FontStyles.Normal,
                 PrimaryTextColor,
                 TextAlignmentOptions.MidlineLeft,
                 Vector2.zero,
                 Vector2.one,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(4f, 0f),
-                new Vector2(-8f, 0f));
+                new Vector2(3f, 0f),
+                new Vector2(-6f, 0f));
             inputText.textWrappingMode = TextWrappingModes.NoWrap;
 
             TextMeshProUGUI placeholder = CreateText(
@@ -304,15 +342,15 @@ namespace EnhancedCountdown.Editor
                 viewport.transform,
                 font,
                 "240.0",
-                42f,
+                31.5f,
                 FontStyles.Normal,
                 new Color32(128, 132, 143, 150),
                 TextAlignmentOptions.MidlineLeft,
                 Vector2.zero,
                 Vector2.one,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(4f, 0f),
-                new Vector2(-8f, 0f));
+                new Vector2(3f, 0f),
+                new Vector2(-6f, 0f));
 
             input.textViewport = viewportRect;
             input.textComponent = inputText;
@@ -324,15 +362,15 @@ namespace EnhancedCountdown.Editor
                 background.transform,
                 font,
                 "BPM",
-                22f,
+                16.5f,
                 FontStyles.Bold,
                 AccentColor,
                 TextAlignmentOptions.MidlineRight,
                 new Vector2(1f, 0f),
                 new Vector2(1f, 1f),
                 new Vector2(1f, 0.5f),
-                new Vector2(-18f, 0f),
-                new Vector2(80f, 0f));
+                new Vector2(-13.5f, 0f),
+                new Vector2(60f, 0f));
         }
 
         private static void CreateActionButton(
@@ -350,7 +388,7 @@ namespace EnhancedCountdown.Editor
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 position,
-                new Vector2(100f, 50f));
+                new Vector2(75f, 37.5f));
             image.type = Image.Type.Sliced;
             image.raycastTarget = true;
 
@@ -358,13 +396,14 @@ namespace EnhancedCountdown.Editor
             button.targetGraphic = image;
             button.transition = Selectable.Transition.ColorTint;
             button.colors = CreateControlColors();
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
 
             CreateText(
                 "Label",
                 image.transform,
                 font,
                 label,
-                25f,
+                18.75f,
                 FontStyles.Bold,
                 PrimaryTextColor,
                 TextAlignmentOptions.Center,
@@ -373,6 +412,56 @@ namespace EnhancedCountdown.Editor
                 new Vector2(0.5f, 0.5f),
                 Vector2.zero,
                 Vector2.zero);
+        }
+
+        private static void CreateEnabledToggle(
+            Transform parent,
+            Sprite trackSprite,
+            Sprite knobSprite,
+            Vector2 position)
+        {
+            var toggleObject = new GameObject("EnabledToggle", typeof(RectTransform), typeof(Toggle));
+            toggleObject.transform.SetParent(parent, false);
+            RectTransform toggleRect = toggleObject.GetComponent<RectTransform>();
+            SetRect(
+                toggleRect,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                position,
+                new Vector2(48f, 26f));
+
+            Image track = CreateImage("ToggleTrack", toggleObject.transform, trackSprite, AccentColor);
+            SetRect(
+                track.rectTransform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                Vector2.zero);
+            track.type = Image.Type.Simple;
+            track.preserveAspect = true;
+            track.raycastTarget = true;
+
+            Image knob = CreateImage("ToggleKnob", toggleObject.transform, knobSprite, PrimaryTextColor);
+            SetRect(
+                knob.rectTransform,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(11f, 0f),
+                new Vector2(19.5f, 19.5f));
+            knob.raycastTarget = false;
+            knob.type = Image.Type.Simple;
+            knob.preserveAspect = true;
+
+            Toggle toggle = toggleObject.GetComponent<Toggle>();
+            toggle.targetGraphic = track;
+            toggle.graphic = null;
+            toggle.isOn = true;
+            toggle.transition = Selectable.Transition.ColorTint;
+            toggle.colors = CreateControlColors();
+            toggle.navigation = new Navigation { mode = Navigation.Mode.None };
         }
 
         private static void CreateDropdown(
@@ -389,43 +478,44 @@ namespace EnhancedCountdown.Editor
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 position,
-                new Vector2(160f, 52f));
+                new Vector2(120f, 39f));
             background.type = Image.Type.Sliced;
             background.raycastTarget = true;
 
             TMP_Dropdown dropdown = background.gameObject.AddComponent<TMP_Dropdown>();
             dropdown.targetGraphic = background;
             dropdown.colors = CreateControlColors();
+            dropdown.navigation = new Navigation { mode = Navigation.Mode.None };
 
             TextMeshProUGUI caption = CreateText(
                 "Label",
                 background.transform,
                 font,
                 "4",
-                26f,
+                19.5f,
                 FontStyles.Bold,
                 PrimaryTextColor,
                 TextAlignmentOptions.Center,
                 Vector2.zero,
                 Vector2.one,
                 new Vector2(0.5f, 0.5f),
-                new Vector2(-12f, 0f),
-                new Vector2(-44f, -8f));
+                new Vector2(-9f, 0f),
+                new Vector2(-33f, -6f));
 
             CreateText(
                 "Arrow",
                 background.transform,
                 font,
                 "▼",
-                16f,
+                12f,
                 FontStyles.Normal,
                 AccentColor,
                 TextAlignmentOptions.Center,
                 new Vector2(1f, 0f),
                 new Vector2(1f, 1f),
                 new Vector2(1f, 0.5f),
-                new Vector2(-18f, 0f),
-                new Vector2(28f, 0f));
+                new Vector2(-13.5f, 0f),
+                new Vector2(21f, 0f));
 
             RectTransform template = CreateDropdownTemplate(background.transform, panelSprite, font, out TextMeshProUGUI itemText);
             dropdown.template = template;
@@ -450,8 +540,8 @@ namespace EnhancedCountdown.Editor
                 new Vector2(0f, 1f),
                 new Vector2(1f, 1f),
                 new Vector2(0.5f, 0f),
-                new Vector2(0f, 4f),
-                new Vector2(0f, 236f));
+                new Vector2(0f, 3f),
+                new Vector2(0f, 177f));
             templateImage.type = Image.Type.Sliced;
             templateImage.raycastTarget = true;
 
@@ -459,17 +549,17 @@ namespace EnhancedCountdown.Editor
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
-            scrollRect.scrollSensitivity = 34f;
+            scrollRect.scrollSensitivity = 25.5f;
 
             GameObject viewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
             viewport.transform.SetParent(template, false);
             RectTransform viewportRect = viewport.GetComponent<RectTransform>();
-            SetRect(viewportRect, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-8f, -8f));
+            SetRect(viewportRect, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-6f, -6f));
 
             GameObject contentObject = new GameObject("Content", typeof(RectTransform));
             contentObject.transform.SetParent(viewportRect, false);
             RectTransform content = contentObject.GetComponent<RectTransform>();
-            SetRect(content, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 576f));
+            SetRect(content, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 432f));
 
             Image itemBackground = CreateImage("Item", content, null, Color.clear);
             SetRect(
@@ -478,7 +568,7 @@ namespace EnhancedCountdown.Editor
                 new Vector2(1f, 1f),
                 new Vector2(0.5f, 1f),
                 Vector2.zero,
-                new Vector2(0f, 36f));
+                new Vector2(0f, 27f));
             itemBackground.raycastTarget = true;
 
             Toggle toggle = itemBackground.gameObject.AddComponent<Toggle>();
@@ -495,7 +585,7 @@ namespace EnhancedCountdown.Editor
                 itemBackground.transform,
                 font,
                 "1",
-                22f,
+                16.5f,
                 FontStyles.Normal,
                 PrimaryTextColor,
                 TextAlignmentOptions.Center,
@@ -503,7 +593,7 @@ namespace EnhancedCountdown.Editor
                 Vector2.one,
                 new Vector2(0.5f, 0.5f),
                 Vector2.zero,
-                new Vector2(-12f, 0f));
+                new Vector2(-9f, 0f));
 
             scrollRect.viewport = viewportRect;
             scrollRect.content = content;
@@ -605,6 +695,71 @@ namespace EnhancedCountdown.Editor
                 importer.wrapMode = TextureWrapMode.Clamp;
                 importer.SaveAndReimport();
             }
+        }
+
+        private static void EnsureToggleArt()
+        {
+            EnsureRoundedSpriteFile(ToggleTrackSpritePath, 192, 104, 184f, 96f, 48f);
+            EnsureRoundedSpriteFile(ToggleKnobSpritePath, 104, 104, 96f, 96f, 48f);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            ConfigureSpriteImporter(ToggleTrackSpritePath, Vector4.zero);
+            ConfigureSpriteImporter(ToggleKnobSpritePath, Vector4.zero);
+        }
+
+        private static void EnsureRoundedSpriteFile(
+            string assetPath,
+            int width,
+            int height,
+            float shapeWidth,
+            float shapeHeight,
+            float radius)
+        {
+            string absolutePath = Path.Combine(ProjectRoot, assetPath);
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            var pixels = new Color32[width * height];
+            float halfWidth = width * 0.5f;
+            float halfHeight = height * 0.5f;
+            float halfShapeWidth = shapeWidth * 0.5f;
+            float halfShapeHeight = shapeHeight * 0.5f;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float distanceX = Mathf.Abs(x + 0.5f - halfWidth) - (halfShapeWidth - radius);
+                    float distanceY = Mathf.Abs(y + 0.5f - halfHeight) - (halfShapeHeight - radius);
+                    float outsideDistance = Mathf.Sqrt(
+                        Mathf.Max(distanceX, 0f) * Mathf.Max(distanceX, 0f)
+                        + Mathf.Max(distanceY, 0f) * Mathf.Max(distanceY, 0f));
+                    float signedDistance = outsideDistance + Mathf.Min(Mathf.Max(distanceX, distanceY), 0f) - radius;
+                    byte alpha = (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - signedDistance) * 255f);
+                    pixels[y * width + x] = new Color32(255, 255, 255, alpha);
+                }
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply();
+            File.WriteAllBytes(absolutePath, texture.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(texture);
+        }
+
+        private static void ConfigureSpriteImporter(string assetPath, Vector4 border)
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (importer == null)
+            {
+                throw new InvalidOperationException($"Could not import generated UI sprite: {assetPath}");
+            }
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spriteBorder = border;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.filterMode = FilterMode.Bilinear;
+            var textureSettings = new TextureImporterSettings();
+            importer.ReadTextureSettings(textureSettings);
+            textureSettings.spriteMeshType = SpriteMeshType.FullRect;
+            importer.SetTextureSettings(textureSettings);
+            importer.SaveAndReimport();
         }
 
         private static TMP_FontAsset EnsureFontAsset()
@@ -757,5 +912,8 @@ namespace EnhancedCountdown.Editor
 
         private static string ProjectRoot => Directory.GetParent(Application.dataPath)?.FullName
             ?? throw new InvalidOperationException("Unable to locate the Unity project root.");
+
+        private static string RuntimeAssetRoot => Path.GetFullPath(
+            Path.Combine(ProjectRoot, "..", "RemoveCountdown", "Assets"));
     }
 }

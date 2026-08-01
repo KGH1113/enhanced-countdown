@@ -4,7 +4,7 @@ internal readonly struct MetronomePlayback
 {
   internal MetronomePlayback(
     double originalBpm,
-    double normalizedBpm,
+    double clickBpm,
     double startedRealtime,
     double dspStartTime,
     double clickInterval,
@@ -12,7 +12,7 @@ internal readonly struct MetronomePlayback
   )
   {
     OriginalBpm = originalBpm;
-    NormalizedBpm = normalizedBpm;
+    ClickBpm = clickBpm;
     StartedRealtime = startedRealtime;
     DspStartTime = dspStartTime;
     ClickInterval = clickInterval;
@@ -20,7 +20,7 @@ internal readonly struct MetronomePlayback
   }
 
   internal double OriginalBpm { get; }
-  internal double NormalizedBpm { get; }
+  internal double ClickBpm { get; }
   internal double StartedRealtime { get; }
   internal double DspStartTime { get; }
   internal double ClickInterval { get; }

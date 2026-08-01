@@ -7,25 +7,56 @@ namespace RemoveCountdown.Infrastructure.Unity;
 
 internal sealed class UnityFrozenMetronome : IMetronome
 {
-  private const double MinimumBpm = 200.0;
-  private const double MaximumBpm = 500.0;
+  private const double MinimumInitialBpm = 200.0;
+  private const double MaximumInitialBpm = 500.0;
   private const double SchedulingLeadSeconds = 0.05;
-  private const int BeatsPerLoop = 4;
   private const float FallbackAccentGain = 1.35f;
   private readonly IModLogger logger;
+  private UnityMetronomeControlPanel controlPanel;
   private UnityMetronomeDisplay metronomeDisplay;
   private GameObject metronomeObject;
   private AudioSource metronomeSource;
   private AudioClip metronomeLoopClip;
+  private AudioSource pendingSource;
+  private AudioClip pendingLoopClip;
+  private MetronomePlayback playback;
+  private MetronomePlayback pendingPlayback;
+  private MetronomeSettings sessionSettings;
+  private MetronomeSettings activeSettings;
+  private MetronomeSettings pendingSettings;
+  private double sessionDefaultClickBpm;
+  private bool hasPlayback;
+  private bool hasPendingPlayback;
+  private bool hasSessionSettings;
+  private bool isEnabledForSession = true;
+  private bool disableRequested;
 
   internal UnityFrozenMetronome(IModLogger logger)
   {
     this.logger = logger;
   }
 
+  public bool IsEnabledForSession => isEnabledForSession;
+
+  public bool IsUiConsumingInput => controlPanel?.IsConsumingInput == true;
+
+  public bool ConsumeDisableRequest()
+  {
+    if (!disableRequested)
+    {
+      return false;
+    }
+    disableRequested = false;
+    return true;
+  }
+
   public MetronomePlayback? Start()
   {
     Stop();
+    if (!isEnabledForSession)
+    {
+      return null;
+    }
     scrConductor conductor = ADOBase.conductor;
     if (conductor == null)
     {
@@ -40,7 +71,9 @@ internal sealed class UnityFrozenMetronome : IMetronome
     }
 
     double originalBpm = 60.0 / originalInterval;
-    double normalizedBpm = NormalizeBpm(originalBpm);
+    MetronomeSettings settings = hasSessionSettings
+      ? sessionSettings
+      : new MetronomeSettings(NormalizeInitialBpm(originalBpm), 4, 4);
     try
     {
       AudioClip hatClip = AudioManager.Instance.FindOrLoadAudioClip("sndHat");
@@ -50,76 +83,32 @@ internal sealed class UnityFrozenMetronome : IMetronome
         return null;
       }
 
-      double interval = 60.0 / normalizedBpm;
-      int loopFrames = Math.Max(1, (int)Math.Round(hatClip.frequency * interval));
-      if (!TryCreateClickSamples(hatClip, hatClip.frequency, hatClip.channels, loopFrames, out float[] weakSamples))
-      {
-        logger.Log("Skipped the frozen-start metronome because sndHat sample data is unavailable.");
-        return null;
-      }
-
-      float[] accentSamples;
-      AudioClip kickClip = null;
-      try
-      {
-        kickClip = AudioManager.Instance.FindOrLoadAudioClip("sndKick");
-      }
-      catch (Exception exception)
-      {
-        logger.LogError("Failed to load sndKick for the frozen-start accent", exception);
-      }
-      if (
-        kickClip == null
-        || !TryCreateClickSamples(kickClip, hatClip.frequency, hatClip.channels, loopFrames, out accentSamples)
-      )
-      {
-        accentSamples = CreateAmplifiedCopy(weakSamples, FallbackAccentGain);
-        logger.Log("Used an amplified sndHat for the frozen-start accent because sndKick was unavailable.");
-      }
-
-      int samplesPerBeat = loopFrames * hatClip.channels;
-      float[] loopSamples = new float[samplesPerBeat * BeatsPerLoop];
-      Array.Copy(accentSamples, 0, loopSamples, 0, samplesPerBeat);
-      for (int beatIndex = 1; beatIndex < BeatsPerLoop; beatIndex++)
-      {
-        Array.Copy(weakSamples, 0, loopSamples, beatIndex * samplesPerBeat, samplesPerBeat);
-      }
-      metronomeLoopClip = AudioClip.Create(
-        "RemoveCountdown Frozen Metronome",
-        loopFrames * BeatsPerLoop,
-        hatClip.channels,
-        hatClip.frequency,
-        stream: false
-      );
-      if (!metronomeLoopClip.SetData(loopSamples, 0))
-      {
-        throw new InvalidOperationException("The frozen-start metronome loop sample data could not be assigned.");
-      }
+      AudioClip kickClip = TryLoadKickClip();
+      metronomeLoopClip = CreateLoopClip(hatClip, kickClip, settings, out int loopFrames);
 
       metronomeObject = new GameObject("RemoveCountdown Frozen Metronome");
       UnityEngine.Object.DontDestroyOnLoad(metronomeObject);
-      metronomeSource = metronomeObject.AddComponent<AudioSource>();
-      metronomeSource.playOnAwake = false;
-      metronomeSource.loop = true;
-      metronomeSource.spatialBlend = 0f;
-      metronomeSource.pitch = 1f;
-      metronomeSource.priority = 10;
-      metronomeSource.volume = conductor.hitSoundVolume;
-      metronomeSource.outputAudioMixerGroup = conductor.hitSoundGroup;
-      metronomeSource.ignoreListenerPause = true;
-      metronomeSource.clip = metronomeLoopClip;
+      metronomeSource = CreateSource(metronomeLoopClip, conductor);
       double clickInterval = (double)loopFrames / hatClip.frequency;
       double dspStartTime = AudioSettings.dspTime + SchedulingLeadSeconds;
       double startedRealtime = Time.realtimeSinceStartupAsDouble;
       metronomeSource.PlayScheduled(dspStartTime);
-      var playback = new MetronomePlayback(
+      playback = new MetronomePlayback(
         originalBpm,
-        normalizedBpm,
+        settings.ClickBpm,
         startedRealtime,
         dspStartTime,
         clickInterval,
         loopFrames
       );
+      hasPlayback = true;
+      activeSettings = settings;
+      sessionSettings = settings;
+      if (!hasSessionSettings)
+      {
+        sessionDefaultClickBpm = settings.ClickBpm;
+      }
+      hasSessionSettings = true;
       try
       {
         metronomeDisplay = UnityMetronomeDisplay.Create(playback);
@@ -129,9 +118,23 @@ internal sealed class UnityFrozenMetronome : IMetronome
         logger.LogError("Failed to create the frozen-start metronome display", exception);
         metronomeDisplay = null;
       }
+      try
+      {
+        controlPanel = UnityMetronomeControlPanel.Load(
+          sessionSettings,
+          sessionDefaultClickBpm,
+          RequestSettings,
+          RequestDisable
+        );
+      }
+      catch (Exception exception)
+      {
+        logger.LogError("Failed to create the frozen-start metronome control panel", exception);
+        controlPanel = null;
+      }
       logger.Log(
-        $"Started frozen-start metronome at {normalizedBpm:F3} BPM with a Kick-Hat-Hat-Hat pattern "
-          + $"(game countdown {originalBpm:F3} BPM)."
+        $"Started frozen-start metronome at {settings.ClickBpm:F1} BPM with a "
+          + $"{settings.Numerator}/{settings.Denominator} accent pattern (game countdown {originalBpm:F3} BPM)."
       );
       return playback;
     }
@@ -145,17 +148,32 @@ internal sealed class UnityFrozenMetronome : IMetronome
 
   public void UpdateDisplay()
   {
+    PromotePendingPlaybackIfDue();
     if (metronomeDisplay != null && metronomeSource != null)
     {
       metronomeDisplay.Update(metronomeSource.timeSamples, metronomeSource.isPlaying);
     }
   }
 
+  public void ResetSessionSettings()
+  {
+    Stop();
+    sessionSettings = default;
+    activeSettings = default;
+    pendingSettings = default;
+    sessionDefaultClickBpm = 0.0;
+    hasSessionSettings = false;
+    isEnabledForSession = true;
+    disableRequested = false;
+  }
+
   public void Stop(string reason = null)
   {
-    bool wasRunning = metronomeObject != null || metronomeDisplay != null;
+    bool wasRunning = metronomeObject != null || metronomeDisplay != null || controlPanel != null;
+    controlPanel?.Dispose();
     metronomeDisplay?.Dispose();
     metronomeSource?.Stop();
+    pendingSource?.Stop();
     if (metronomeObject != null)
     {
       UnityEngine.Object.Destroy(metronomeObject);
@@ -164,24 +182,273 @@ internal sealed class UnityFrozenMetronome : IMetronome
     {
       UnityEngine.Object.Destroy(metronomeLoopClip);
     }
+    if (pendingLoopClip != null)
+    {
+      UnityEngine.Object.Destroy(pendingLoopClip);
+    }
 
+    controlPanel = null;
     metronomeDisplay = null;
     metronomeSource = null;
     metronomeObject = null;
     metronomeLoopClip = null;
+    pendingSource = null;
+    pendingLoopClip = null;
+    playback = default;
+    pendingPlayback = default;
+    activeSettings = default;
+    pendingSettings = default;
+    hasPlayback = false;
+    hasPendingPlayback = false;
     if (wasRunning && !string.IsNullOrEmpty(reason))
     {
       logger.Log($"Stopped frozen-start metronome: {reason}.");
     }
   }
 
-  private static double NormalizeBpm(double bpm)
+  private void RequestSettings(MetronomeSettings requested)
   {
-    while (bpm < MinimumBpm)
+    PromotePendingPlaybackIfDue();
+    MetronomeSettings comparison = hasPendingPlayback ? pendingSettings : activeSettings;
+    if (!hasPlayback || metronomeSource == null || requested == comparison)
+    {
+      sessionSettings = requested;
+      controlPanel?.SetSettings(sessionSettings);
+      return;
+    }
+
+    if (requested.ClickBpm.Equals(comparison.ClickBpm) && requested.Numerator == comparison.Numerator)
+    {
+      sessionSettings = requested;
+      if (hasPendingPlayback)
+      {
+        pendingSettings = requested;
+      }
+      controlPanel?.SetSettings(sessionSettings);
+      logger.Log($"Changed metronome time signature label to {requested.Numerator}/{requested.Denominator}.");
+      return;
+    }
+
+    AudioClip replacementClip = null;
+    AudioSource replacementSource = null;
+    try
+    {
+      AudioClip hatClip = AudioManager.Instance.FindOrLoadAudioClip("sndHat");
+      if (hatClip == null)
+      {
+        throw new InvalidOperationException("sndHat could not be loaded for the metronome setting change.");
+      }
+
+      replacementClip = CreateLoopClip(hatClip, TryLoadKickClip(), requested, out int loopFrames);
+      replacementSource = CreateSource(replacementClip, metronomeSource);
+      double transitionTime = NextSafeTickTime(playback, AudioSettings.dspTime + SchedulingLeadSeconds);
+      double clickInterval = (double)loopFrames / hatClip.frequency;
+      var replacementPlayback = new MetronomePlayback(
+        playback.OriginalBpm,
+        requested.ClickBpm,
+        Time.realtimeSinceStartupAsDouble,
+        transitionTime,
+        clickInterval,
+        loopFrames
+      );
+      replacementSource.PlayScheduled(transitionTime);
+      metronomeSource.SetScheduledEndTime(transitionTime);
+      CancelPendingPlayback();
+      pendingLoopClip = replacementClip;
+      pendingSource = replacementSource;
+      pendingPlayback = replacementPlayback;
+      pendingSettings = requested;
+      hasPendingPlayback = true;
+      replacementClip = null;
+      replacementSource = null;
+      sessionSettings = requested;
+      controlPanel?.SetSettings(sessionSettings);
+      logger.Log(
+        $"Scheduled metronome change to {requested.ClickBpm:F1} BPM and "
+          + $"{requested.Numerator}/{requested.Denominator} at DSP {transitionTime:F6}."
+      );
+    }
+    catch (Exception exception)
+    {
+      replacementSource?.Stop();
+      if (replacementSource != null)
+      {
+        UnityEngine.Object.Destroy(replacementSource);
+      }
+      if (replacementClip != null)
+      {
+        UnityEngine.Object.Destroy(replacementClip);
+      }
+      controlPanel?.SetSettings(sessionSettings);
+      logger.LogError("Failed to schedule the metronome setting change", exception);
+    }
+  }
+
+  private void RequestDisable()
+  {
+    isEnabledForSession = false;
+    disableRequested = true;
+  }
+
+  private void PromotePendingPlaybackIfDue()
+  {
+    if (!hasPendingPlayback || AudioSettings.dspTime < pendingPlayback.DspStartTime)
+    {
+      return;
+    }
+
+    AudioSource previousSource = metronomeSource;
+    AudioClip previousClip = metronomeLoopClip;
+    metronomeSource = pendingSource;
+    metronomeLoopClip = pendingLoopClip;
+    playback = pendingPlayback;
+    activeSettings = pendingSettings;
+    pendingSource = null;
+    pendingLoopClip = null;
+    pendingPlayback = default;
+    pendingSettings = default;
+    hasPendingPlayback = false;
+    metronomeDisplay?.SetPlayback(playback);
+
+    if (previousSource != null)
+    {
+      UnityEngine.Object.Destroy(previousSource);
+    }
+    if (previousClip != null)
+    {
+      UnityEngine.Object.Destroy(previousClip);
+    }
+  }
+
+  private void CancelPendingPlayback()
+  {
+    pendingSource?.Stop();
+    if (pendingSource != null)
+    {
+      UnityEngine.Object.Destroy(pendingSource);
+    }
+    if (pendingLoopClip != null)
+    {
+      UnityEngine.Object.Destroy(pendingLoopClip);
+    }
+    pendingSource = null;
+    pendingLoopClip = null;
+    pendingPlayback = default;
+    pendingSettings = default;
+    hasPendingPlayback = false;
+  }
+
+  private AudioClip TryLoadKickClip()
+  {
+    try
+    {
+      return AudioManager.Instance.FindOrLoadAudioClip("sndKick");
+    }
+    catch (Exception exception)
+    {
+      logger.LogError("Failed to load sndKick for the frozen-start accent", exception);
+      return null;
+    }
+  }
+
+  private AudioClip CreateLoopClip(
+    AudioClip hatClip,
+    AudioClip kickClip,
+    MetronomeSettings settings,
+    out int loopFrames
+  )
+  {
+    double interval = 60.0 / settings.ClickBpm;
+    loopFrames = Math.Max(1, (int)Math.Round(hatClip.frequency * interval));
+    if (!TryCreateClickSamples(hatClip, hatClip.frequency, hatClip.channels, loopFrames, out float[] weakSamples))
+    {
+      throw new InvalidOperationException("sndHat sample data is unavailable.");
+    }
+
+    if (
+      kickClip == null
+      || !TryCreateClickSamples(kickClip, hatClip.frequency, hatClip.channels, loopFrames, out float[] accentSamples)
+    )
+    {
+      accentSamples = CreateAmplifiedCopy(weakSamples, FallbackAccentGain);
+      logger.Log("Used an amplified sndHat for the frozen-start accent because sndKick was unavailable.");
+    }
+
+    int samplesPerBeat = loopFrames * hatClip.channels;
+    float[] loopSamples = new float[samplesPerBeat * settings.Numerator];
+    Array.Copy(accentSamples, 0, loopSamples, 0, samplesPerBeat);
+    for (int beatIndex = 1; beatIndex < settings.Numerator; beatIndex++)
+    {
+      Array.Copy(weakSamples, 0, loopSamples, beatIndex * samplesPerBeat, samplesPerBeat);
+    }
+
+    AudioClip loopClip = AudioClip.Create(
+      "RemoveCountdown Frozen Metronome",
+      loopFrames * settings.Numerator,
+      hatClip.channels,
+      hatClip.frequency,
+      stream: false
+    );
+    if (loopClip == null || !loopClip.SetData(loopSamples, 0))
+    {
+      if (loopClip != null)
+      {
+        UnityEngine.Object.Destroy(loopClip);
+      }
+      throw new InvalidOperationException("The frozen-start metronome loop sample data could not be assigned.");
+    }
+    return loopClip;
+  }
+
+  private AudioSource CreateSource(AudioClip clip, scrConductor conductor)
+  {
+    AudioSource source = metronomeObject.AddComponent<AudioSource>();
+    ConfigureSource(source, clip, conductor.hitSoundVolume, conductor.hitSoundGroup);
+    return source;
+  }
+
+  private AudioSource CreateSource(AudioClip clip, AudioSource template)
+  {
+    AudioSource source = metronomeObject.AddComponent<AudioSource>();
+    ConfigureSource(source, clip, template.volume, template.outputAudioMixerGroup);
+    return source;
+  }
+
+  private static void ConfigureSource(
+    AudioSource source,
+    AudioClip clip,
+    float volume,
+    UnityEngine.Audio.AudioMixerGroup mixerGroup
+  )
+  {
+    source.playOnAwake = false;
+    source.loop = true;
+    source.spatialBlend = 0f;
+    source.pitch = 1f;
+    source.priority = 10;
+    source.volume = volume;
+    source.outputAudioMixerGroup = mixerGroup;
+    source.ignoreListenerPause = true;
+    source.clip = clip;
+  }
+
+  private static double NextSafeTickTime(MetronomePlayback activePlayback, double earliestTime)
+  {
+    if (earliestTime <= activePlayback.DspStartTime)
+    {
+      return activePlayback.DspStartTime;
+    }
+    double elapsedTicks = (earliestTime - activePlayback.DspStartTime) / activePlayback.ClickInterval;
+    return activePlayback.DspStartTime + Math.Ceiling(elapsedTicks) * activePlayback.ClickInterval;
+  }
+
+  private static double NormalizeInitialBpm(double bpm)
+  {
+    while (bpm < MinimumInitialBpm)
     {
       bpm *= 2.0;
     }
-    while (bpm > MaximumBpm)
+    while (bpm > MaximumInitialBpm)
     {
       bpm *= 0.5;
     }

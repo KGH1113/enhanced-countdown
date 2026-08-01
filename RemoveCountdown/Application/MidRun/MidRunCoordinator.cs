@@ -14,6 +14,7 @@ internal sealed partial class MidRunCoordinator
   private readonly FrozenStartPreparer startPreparer;
   private readonly FrozenRuntimeRestorer runtimeRestorer;
   private FrozenStartSession session;
+  private bool restartingWithNativeCountdown;
 
   internal MidRunCoordinator(
     IGameWorld gameWorld,
@@ -39,6 +40,10 @@ internal sealed partial class MidRunCoordinator
   internal void OnStartRewind(scrController controller, int requestedFloor)
   {
     RestoreAndReset("restart");
+    if (!metronome.IsEnabledForSession)
+    {
+      return;
+    }
     int startFloor = gameWorld.ResolveStartFloor(requestedFloor);
     if (gameWorld.CanArm(controller, startFloor))
     {
@@ -98,6 +103,10 @@ internal sealed partial class MidRunCoordinator
       return true;
     }
     if (gameWorld.CurrentFrame <= session.FrozenFrame || player == null)
+    {
+      return false;
+    }
+    if (metronome.IsUiConsumingInput)
     {
       return false;
     }
@@ -178,6 +187,7 @@ internal sealed partial class MidRunCoordinator
     if (!gameWorld.IsRuntimeValid(session.Controller))
     {
       RestoreAndReset("scene or editor state changed");
+      metronome.ResetSessionSettings();
       return;
     }
     if (gameWorld.IsAsyncInputActive)
@@ -191,6 +201,11 @@ internal sealed partial class MidRunCoordinator
     if (IsFrozen)
     {
       metronome.UpdateDisplay();
+      if (metronome.ConsumeDisableRequest())
+      {
+        RestartWithNativeCountdown();
+        return;
+      }
       visuals.UpdatePreLandingMotion();
     }
   }
@@ -206,6 +221,43 @@ internal sealed partial class MidRunCoordinator
   internal void Shutdown()
   {
     RestoreAndReset("mod shutdown");
+    metronome.ResetSessionSettings();
+  }
+
+  internal void OnEditorPlayModeExited()
+  {
+    RestoreAndReset("editor play mode exited");
+    if (restartingWithNativeCountdown)
+    {
+      restartingWithNativeCountdown = false;
+      return;
+    }
+    metronome.ResetSessionSettings();
+  }
+
+  private void RestartWithNativeCountdown()
+  {
+    logger.Log("Metronome disabled for this editor playtest; restarting with the game's native countdown.");
+    RestoreAndReset("metronome disabled");
+    scnEditor editor = ADOBase.editor;
+    if (editor == null)
+    {
+      logger.Log("Could not restart with the native countdown because the level editor is unavailable.");
+      return;
+    }
+
+    restartingWithNativeCountdown = true;
+    try
+    {
+      editor.SwitchToEditMode();
+      editor.Play();
+    }
+    catch (Exception exception)
+    {
+      restartingWithNativeCountdown = false;
+      logger.LogError("Failed to restart the editor playtest with the native countdown", exception);
+      metronome.ResetSessionSettings();
+    }
   }
 
   private void ReleaseFrozenStart()

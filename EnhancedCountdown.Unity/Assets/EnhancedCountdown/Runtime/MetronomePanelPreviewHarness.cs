@@ -13,6 +13,10 @@ namespace EnhancedCountdown
         private const decimal InitialBpm = 240.0m;
 
         private TMP_InputField bpmInput;
+        private TMP_Text bpmPlaceholder;
+        private Toggle enabledToggle;
+        private Image toggleTrack;
+        private RectTransform toggleKnob;
         private decimal currentBpm = InitialBpm;
 
         private void Awake()
@@ -25,6 +29,7 @@ namespace EnhancedCountdown
             }
 
             bpmInput = Require<TMP_InputField>(panel, "BpmInput");
+            bpmPlaceholder = bpmInput.placeholder as TMP_Text;
             BindMultiplier(panel, "Divide2Button", 0.5m);
             BindMultiplier(panel, "Multiply2Button", 2m);
             BindMultiplier(panel, "Divide3Button", 1m / 3m);
@@ -32,11 +37,16 @@ namespace EnhancedCountdown
 
             TMP_Dropdown numerator = Require<TMP_Dropdown>(panel, "NumeratorDropdown");
             TMP_Dropdown denominator = Require<TMP_Dropdown>(panel, "DenominatorDropdown");
+            enabledToggle = Require<Toggle>(panel, "EnabledToggle");
+            toggleTrack = Require<Image>(enabledToggle.transform, "ToggleTrack");
+            toggleKnob = Require<RectTransform>(enabledToggle.transform, "ToggleKnob");
             numerator.SetValueWithoutNotify(3);
             denominator.SetValueWithoutNotify(3);
 
             bpmInput.onEndEdit.AddListener(CommitBpm);
+            enabledToggle.onValueChanged.AddListener(RefreshToggle);
             RefreshBpmText();
+            RefreshToggle(enabledToggle.isOn);
         }
 
         private void OnDestroy()
@@ -44,6 +54,10 @@ namespace EnhancedCountdown
             if (bpmInput != null)
             {
                 bpmInput.onEndEdit.RemoveListener(CommitBpm);
+            }
+            if (enabledToggle != null)
+            {
+                enabledToggle.onValueChanged.RemoveListener(RefreshToggle);
             }
         }
 
@@ -76,8 +90,23 @@ namespace EnhancedCountdown
         {
             if (bpmInput != null)
             {
-                bpmInput.SetTextWithoutNotify(currentBpm.ToString("0.0", CultureInfo.InvariantCulture));
+                string bpmText = currentBpm.ToString("0.0", CultureInfo.InvariantCulture);
+                bpmInput.SetTextWithoutNotify(bpmText);
+                if (bpmPlaceholder != null)
+                {
+                    bpmPlaceholder.text = InitialBpm.ToString("0.0", CultureInfo.InvariantCulture);
+                }
             }
+        }
+
+        private void RefreshToggle(bool enabled)
+        {
+            toggleTrack.color = enabled ? new Color32(68, 191, 255, 255) : new Color32(70, 73, 82, 255);
+            float padding = Mathf.Max(0f, (toggleTrack.rectTransform.rect.height - toggleKnob.rect.height) * 0.5f);
+            float travel = Mathf.Max(0f, (toggleTrack.rectTransform.rect.width - toggleKnob.rect.width) * 0.5f - padding);
+            Vector2 position = toggleKnob.anchoredPosition;
+            position.x = enabled ? travel : -travel;
+            toggleKnob.anchoredPosition = position;
         }
 
         private static bool TryParseBpm(string value, out decimal bpm)

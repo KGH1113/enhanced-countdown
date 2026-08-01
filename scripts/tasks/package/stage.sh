@@ -13,6 +13,9 @@ require_file "$REMOVE_COUNTDOWN_BUILD_OUTPUT/RemoveCountdown.dll"
 require_file "$REMOVE_COUNTDOWN_BUILD_OUTPUT/Info.json"
 require_file "$REMOVE_COUNTDOWN_BOOTSTRAP_BUILD_OUTPUT/RemoveCountdown.Bootstrap.dll"
 require_file "$REMOVE_COUNTDOWN_UPDATE_ENGINE_BUILD_OUTPUT/RemoveCountdown.UpdateEngine.dll"
+for platform in mac win linux; do
+  require_file "$REMOVE_COUNTDOWN_ASSET_SOURCE/$platform/enhancedcountdown_ui.bundle"
+done
 
 mkdir -p "$REMOVE_COUNTDOWN_PACKAGE_BUILD_ROOT"
 if [ -e "$REMOVE_COUNTDOWN_PACKAGE_STAGE" ]; then
@@ -31,6 +34,7 @@ printf '{\n  "ReceiveBetaUpdates": false\n}\n' > "$REMOVE_COUNTDOWN_PACKAGE_STAG
 cp "$REMOVE_COUNTDOWN_BUILD_OUTPUT/RemoveCountdown.dll" "$runtime/"
 cp "$REMOVE_COUNTDOWN_UPDATE_ENGINE_BUILD_OUTPUT/RemoveCountdown.UpdateEngine.dll" "$runtime/"
 cp "$REMOVE_COUNTDOWN_BUILD_OUTPUT/Info.json" "$runtime/Info.json"
+cp -R "$REMOVE_COUNTDOWN_ASSET_SOURCE" "$runtime/Assets"
 
 for optional_file in RemoveCountdown.pdb RemoveCountdown.deps.json; do
   if [ -f "$REMOVE_COUNTDOWN_BUILD_OUTPUT/$optional_file" ]; then

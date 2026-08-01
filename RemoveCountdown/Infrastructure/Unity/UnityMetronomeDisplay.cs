@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Reflection;
 using RemoveCountdown.Domain.MidRun;
@@ -40,8 +39,7 @@ internal sealed class UnityMetronomeDisplay
   {
     scrCountdown countdown = UnityEngine.Object.FindAnyObjectByType<scrCountdown>();
     Canvas canvas = countdown?.GetComponentInParent<Canvas>();
-    Text countdownText = countdown?.GetComponent<Text>();
-    if (canvas == null || countdownText == null)
+    if (canvas == null)
     {
       throw new InvalidOperationException("The countdown canvas is unavailable.");
     }
@@ -65,7 +63,7 @@ internal sealed class UnityMetronomeDisplay
     rootTransform.anchorMax = new Vector2(0.5f, 0.5f);
     rootTransform.pivot = new Vector2(0.5f, 0.5f);
     rootTransform.anchoredPosition = Vector2.zero;
-    rootTransform.sizeDelta = new Vector2(480f, 280f);
+    rootTransform.sizeDelta = new Vector2(240f, 240f);
     rootTransform.SetAsLastSibling();
 
     CanvasGroup canvasGroup = root.GetComponent<CanvasGroup>();
@@ -79,35 +77,12 @@ internal sealed class UnityMetronomeDisplay
     iconTransform.anchorMin = new Vector2(0.5f, 0.5f);
     iconTransform.anchorMax = new Vector2(0.5f, 0.5f);
     iconTransform.pivot = new Vector2(0.5f, 0.5f);
-    iconTransform.anchoredPosition = new Vector2(0f, -39f);
+    iconTransform.anchoredPosition = Vector2.zero;
     iconTransform.sizeDelta = new Vector2(200f, 200f);
     Image image = iconObject.GetComponent<Image>();
     image.sprite = iconSprite;
     image.preserveAspect = true;
     image.raycastTarget = false;
-
-    var textObject = new GameObject("BPM", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
-    textObject.layer = root.layer;
-    var textTransform = (RectTransform)textObject.transform;
-    textTransform.SetParent(rootTransform, worldPositionStays: false);
-    textTransform.anchorMin = new Vector2(0.5f, 0.5f);
-    textTransform.anchorMax = new Vector2(0.5f, 0.5f);
-    textTransform.pivot = new Vector2(0.5f, 0.5f);
-    textTransform.anchoredPosition = new Vector2(0f, 103f);
-    textTransform.sizeDelta = new Vector2(440f, 72f);
-
-    Text bpmText = textObject.GetComponent<Text>();
-    bpmText.font = countdownText.font;
-    bpmText.fontStyle = countdownText.fontStyle;
-    bpmText.material = countdownText.material;
-    bpmText.color = countdownText.color;
-    bpmText.fontSize = 60;
-    bpmText.alignment = TextAnchor.MiddleCenter;
-    bpmText.horizontalOverflow = HorizontalWrapMode.Overflow;
-    bpmText.verticalOverflow = VerticalWrapMode.Overflow;
-    bpmText.raycastTarget = false;
-    bpmText.supportRichText = false;
-    bpmText.text = playback.OriginalBpm.ToString("0.0", CultureInfo.InvariantCulture) + " BPM";
 
     iconTransform.localScale = Vector3.one;
     root.SetActive(true);
@@ -139,6 +114,11 @@ internal sealed class UnityMetronomeDisplay
 
     float direction = (beatIndex & 1) == 0 ? -1f : 1f;
     iconTransform.localScale = new Vector3(direction * magnitude, magnitude, 1f);
+  }
+
+  internal void SetPlayback(MetronomePlayback value)
+  {
+    playback = value;
   }
 
   internal void Dispose()

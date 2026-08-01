@@ -45,3 +45,13 @@ internal static class PauseFrozenStartPatch
     ModCompositionRoot.Coordinator?.OnPauseRequested(__instance);
   }
 }
+
+[HarmonyPatch(typeof(scnEditor), nameof(scnEditor.SwitchToEditMode))]
+internal static class EditorPlayModeExitPatch
+{
+  [HarmonyPrefix]
+  private static void Prefix()
+  {
+    ModCompositionRoot.Coordinator?.OnEditorPlayModeExited();
+  }
+}
