@@ -1,0 +1,25 @@
+# Unity generated state
+/Library/
+/Temp/
+/Obj/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Recordings/
+
+# Build output
+/Build/
+/Builds/
+
+# IDE generated files
+/.vscode/
+/*.csproj
+/*.sln
+/*.slnx
+/*.user
+/*.pidb
+/*.booproj
+
+# OS files
+.DS_Store
+
