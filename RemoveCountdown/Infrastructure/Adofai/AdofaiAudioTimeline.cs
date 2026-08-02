@@ -91,8 +91,14 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
       - elapsedSinceFirstInput
       - scrConductor.calibration_i
       - (frozenSongPosition + conductor.addoffset) / conductor.song.pitch;
-    conductor.songposition_minusi = frozenSongPosition + elapsedSinceFirstInput * conductor.song.pitch;
+    double resumedSongPosition = frozenSongPosition + elapsedSinceFirstInput * conductor.song.pitch;
+    conductor.songposition_minusi = resumedSongPosition;
     conductor.deltaSongPos = 0.0;
+    logger.Log(
+      $"Rebased frozen audio timeline: frozenSong={frozenSongPosition:F6}, "
+        + $"inputElapsedMs={elapsedSinceFirstInput * 1000.0:F3}, resumedSong={resumedSongPosition:F6}, "
+        + $"dsp={now:F6}, dspTimeSong={conductor.dspTimeSong:F6}."
+    );
     return true;
   }
 
@@ -153,13 +159,52 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
       return;
     }
 
-    ulong nowTick = (ulong)DateTime.Now.Ticks;
+    scrConductor activeConductor = ADOBase.conductor;
+    double staleConductorDsp = activeConductor?.dspTime ?? double.NaN;
+    ulong previousOffsetTick = AsyncInputManager.offsetTick;
+
+    ulong wallTickBefore = (ulong)DateTime.Now.Ticks;
+    double currentDspTime = AudioSettings.dspTime;
+    ulong wallTickAfter = (ulong)DateTime.Now.Ticks;
+    ulong nowTick = wallTickBefore + (wallTickAfter - wallTickBefore) / 2UL;
+    ulong currentDspTick = (ulong)Math.Max(0.0, currentDspTime * TimeSpan.TicksPerSecond);
+    ulong newOffsetTick = nowTick >= currentDspTick ? nowTick - currentDspTick : 0UL;
+
     AsyncInputManager.prevFrameTick = nowTick;
     AsyncInputManager.currFrameTick = nowTick;
     AsyncInputManager.previousFrameTime = Time.unscaledTimeAsDouble;
-    AsyncInputManager.offsetTickUpdated = false;
-    AsyncInputUtils.UpdateOffsetTime(1L);
-    logger.Log("Rebased the async input clock to the resumed conductor timeline.");
+    AsyncInputManager.offsetTick = newOffsetTick;
+    AsyncInputManager.offsetTickUpdated = true;
+
+    if (activeConductor == null || activeConductor.song == null || activeConductor.song.pitch == 0f)
+    {
+      logger.Log(
+        $"Rebased async input clock without an active song: wallTick={nowTick}, dsp={currentDspTime:F6}, "
+          + $"offsetDeltaMs={((double)newOffsetTick - previousOffsetTick) / TimeSpan.TicksPerMillisecond:F3}."
+      );
+      return;
+    }
+
+    double pitch = activeConductor.song.pitch;
+    double expectedSongPosition =
+      (currentDspTime - activeConductor.dspTimeSong - scrConductor.calibration_i) * pitch - activeConductor.addoffset;
+    double currentSongPosition = activeConductor.songposition_minusi;
+    double mappedDspTime = (nowTick - newOffsetTick) / (double)TimeSpan.TicksPerSecond;
+    double mappedSongPosition =
+      (mappedDspTime - activeConductor.dspTimeSong - scrConductor.calibration_i) * pitch - activeConductor.addoffset;
+    double staleDspMilliseconds = (currentDspTime - staleConductorDsp) * 1000.0;
+    double offsetDeltaMilliseconds = ((double)newOffsetTick - previousOffsetTick) / TimeSpan.TicksPerMillisecond;
+    double storedSongErrorMilliseconds = (currentSongPosition - expectedSongPosition) / pitch * 1000.0;
+    double mappedSongErrorMilliseconds = (mappedSongPosition - expectedSongPosition) / pitch * 1000.0;
+
+    activeConductor.dspTime = currentDspTime;
+    activeConductor.prev_dspTime = currentDspTime;
+    logger.Log(
+      $"Rebased async input clock: staleDspMs={staleDspMilliseconds:F3}, "
+        + $"offsetDeltaMs={offsetDeltaMilliseconds:F3}, wallTick={nowTick}, dsp={currentDspTime:F6}, "
+        + $"currentSong={currentSongPosition:F6}, expectedSong={expectedSongPosition:F6}, "
+        + $"storedSongErrorMs={storedSongErrorMilliseconds:F3}, mappedSongErrorMs={mappedSongErrorMilliseconds:F3}."
+    );
   }
 
   private void PrimeSongSource(AudioSource source)

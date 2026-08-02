@@ -39,7 +39,8 @@ internal sealed class FrozenRuntimeRestorer
     session.AudioReleasedForInput = true;
     logger.Log(
       "Released the primed audio on the first input before Hit(false), "
-        + $"preserving {elapsed * 1000.0:F3} ms of async event time."
+        + $"inputElapsedMs={elapsed * 1000.0:F3}, "
+        + $"resumedSong={session.FrozenSongPosition + elapsed * audioTimeline.Pitch:F6}."
     );
   }
 
