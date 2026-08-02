@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-if [ "${REMOVE_COUNTDOWN_LOGGING_LOADED:-0}" = "1" ]; then
+if [ "${ENHANCED_COUNTDOWN_LOGGING_LOADED:-0}" = "1" ]; then
   return 0
 fi
-REMOVE_COUNTDOWN_LOGGING_LOADED=1
+ENHANCED_COUNTDOWN_LOGGING_LOADED=1
 
 log_step() {
   printf '\n==> %s\n' "$1"

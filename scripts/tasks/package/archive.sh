@@ -8,13 +8,13 @@ source "$TASK_DIR/../../lib/context.sh"
 source "$TASK_DIR/../../lib/guards.sh"
 
 require_command zip
-require_dir "$REMOVE_COUNTDOWN_PACKAGE_STAGE"
+require_dir "$ENHANCED_COUNTDOWN_PACKAGE_STAGE"
 
-rm -f "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH"
-mkdir -p "$(dirname "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH")"
+rm -f "$ENHANCED_COUNTDOWN_PACKAGE_ZIP_PATH"
+mkdir -p "$(dirname "$ENHANCED_COUNTDOWN_PACKAGE_ZIP_PATH")"
 (
-  cd "$REMOVE_COUNTDOWN_PACKAGE_BUILD_ROOT"
-  zip -r "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH" RemoveCountdown
+  cd "$ENHANCED_COUNTDOWN_PACKAGE_BUILD_ROOT"
+  zip -r "$ENHANCED_COUNTDOWN_PACKAGE_ZIP_PATH" EnhancedCountdown
 )
 
-printf 'Packaged to %s\n' "$REMOVE_COUNTDOWN_PACKAGE_ZIP_PATH"
+printf 'Packaged to %s\n' "$ENHANCED_COUNTDOWN_PACKAGE_ZIP_PATH"

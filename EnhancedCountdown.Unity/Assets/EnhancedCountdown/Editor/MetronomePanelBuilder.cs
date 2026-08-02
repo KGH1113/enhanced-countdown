@@ -914,6 +914,6 @@ namespace EnhancedCountdown.Editor
             ?? throw new InvalidOperationException("Unable to locate the Unity project root.");
 
         private static string RuntimeAssetRoot => Path.GetFullPath(
-            Path.Combine(ProjectRoot, "..", "RemoveCountdown", "Assets"));
+            Path.Combine(ProjectRoot, "..", "EnhancedCountdown", "Assets"));
     }
 }

@@ -1,7 +1,7 @@
 # Build output
 bin/
 obj/
-build/
+/build/
 
 # Local environment
 .env

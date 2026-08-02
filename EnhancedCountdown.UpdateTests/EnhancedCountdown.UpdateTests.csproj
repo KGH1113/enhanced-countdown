@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>EnhancedCountdown.UpdateTests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="EnhancedCountdown.Bootstrap">
+      <HintPath>$(EnhancedCountdownBootstrapDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="EnhancedCountdown.UpdateEngine">
+      <HintPath>$(EnhancedCountdownUpdateEngineDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="UnityModManager">
+      <HintPath>$(UnityModManagerDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
