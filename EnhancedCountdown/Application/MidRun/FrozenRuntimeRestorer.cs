@@ -31,17 +31,28 @@ internal sealed class FrozenRuntimeRestorer
     }
 
     double elapsed = audioTimeline.GetInputElapsedSeconds(session.PendingInputTick);
-    if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition, elapsed))
-    {
-      hitSounds.RebuildFromCheckpoint();
-    }
     audioTimeline.AdvanceAndReleasePrimedSources(elapsed);
     session.AudioReleasedForInput = true;
     logger.Log(
-      "Released the primed audio on the first input before Hit(false), "
+      "Released the primed audio on the first input while keeping the judgment timeline frozen, "
         + $"inputElapsedMs={elapsed * 1000.0:F3}, "
         + $"resumedSong={session.FrozenSongPosition + elapsed * audioTimeline.Pitch:F6}."
     );
+  }
+
+  internal void RebaseTimelineForInput(FrozenStartSession session)
+  {
+    if (session.TimelineRebasedForInput || !audioTimeline.IsAvailable)
+    {
+      return;
+    }
+
+    double elapsed = audioTimeline.GetInputElapsedSeconds(session.PendingInputTick);
+    if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition, elapsed))
+    {
+      hitSounds.RebuildFromCheckpoint();
+      session.TimelineRebasedForInput = true;
+    }
   }
 
   internal void RefreezeAfterRejectedInput(FrozenStartSession session)
@@ -52,7 +63,12 @@ internal sealed class FrozenRuntimeRestorer
     }
 
     audioTimeline.RefreezePrimedSources();
+    if (session.TimelineRebasedForInput && audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition))
+    {
+      hitSounds.RebuildFromCheckpoint();
+    }
     session.AudioReleasedForInput = false;
+    session.TimelineRebasedForInput = false;
   }
 
   internal void Restore(FrozenStartSession session, bool restartAudio)

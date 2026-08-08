@@ -44,6 +44,12 @@ internal sealed partial class MidRunCoordinator
     {
       return;
     }
+    string fallbackReason = gameWorld.GetNativeCountdownFallbackReason();
+    if (fallbackReason != null)
+    {
+      logger.Log($"Using the game's native countdown because {fallbackReason}.");
+      return;
+    }
     int startFloor = gameWorld.ResolveStartFloor(requestedFloor);
     if (gameWorld.CanArm(controller, startFloor))
     {
@@ -123,6 +129,7 @@ internal sealed partial class MidRunCoordinator
     session.PendingInputTick = targetTick;
     targetTick = null;
     session.PendingInputPlayer = player;
+    runtimeRestorer.ReleaseAudioForInput(session);
     logger.Log(gameWorld.DescribeInput(player));
     return true;
   }
@@ -136,7 +143,7 @@ internal sealed partial class MidRunCoordinator
     visuals.RestorePlayer(player);
     if (session.PendingInputPlayer == player)
     {
-      runtimeRestorer.ReleaseAudioForInput(session);
+      runtimeRestorer.RebaseTimelineForInput(session);
     }
   }
 

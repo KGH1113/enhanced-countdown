@@ -5,6 +5,7 @@ namespace EnhancedCountdown.Application.Ports;
 internal interface IGameWorld
 {
   int ResolveStartFloor(int requestedFloor);
+  string GetNativeCountdownFallbackReason();
   bool CanArm(scrController controller, int startFloor);
   bool CanPrepareInitialScrub(scrController controller, int floorNumber);
   bool CanHandleMusicScheduled(scrController controller);

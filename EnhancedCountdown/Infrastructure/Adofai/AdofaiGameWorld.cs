@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
+using EnhancedCountdown.Infrastructure.Compatibility;
 using UnityEngine;
 
 namespace EnhancedCountdown.Infrastructure.Adofai;
@@ -22,6 +23,19 @@ internal sealed class AdofaiGameWorld : IGameWorld
   public int ResolveStartFloor(int requestedFloor)
   {
     return requestedFloor >= 0 ? requestedFloor : GCS.checkpointNum;
+  }
+
+  public string GetNativeCountdownFallbackReason()
+  {
+    if (RDC.auto)
+    {
+      return "autoplay is active";
+    }
+    if (TufReplayPlaybackDetector.IsPlaybackActive())
+    {
+      return "TUFReplay playback is active";
+    }
+    return null;
   }
 
   public bool CanArm(scrController controller, int startFloor)

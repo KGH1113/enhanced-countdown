@@ -20,6 +20,7 @@ internal sealed class FrozenStartSession
   internal double FrozenSongPosition { get; set; }
   internal double FrozenAudioSongPosition { get; set; }
   internal bool AudioReleasedForInput { get; set; }
+  internal bool TimelineRebasedForInput { get; set; }
 
   internal void ClearPendingInput()
   {
