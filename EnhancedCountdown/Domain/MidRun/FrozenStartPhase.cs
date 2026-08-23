@@ -6,6 +6,7 @@ internal enum FrozenStartPhase
   WaitingForScrub,
   WaitingForSchedule,
   Preparing,
+  Warming,
   Frozen,
   Releasing,
 }

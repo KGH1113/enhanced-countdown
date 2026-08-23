@@ -50,7 +50,7 @@ internal sealed class FrozenRuntimeRestorer
     double elapsed = audioTimeline.GetInputElapsedSeconds(session.PendingInputTick);
     if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition, elapsed))
     {
-      hitSounds.RebuildFromCheckpoint();
+      hitSounds.Activate();
       session.TimelineRebasedForInput = true;
     }
   }
@@ -63,10 +63,12 @@ internal sealed class FrozenRuntimeRestorer
     }
 
     audioTimeline.RefreezePrimedSources();
-    if (session.TimelineRebasedForInput && audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition))
+    if (session.TimelineRebasedForInput)
     {
-      hitSounds.RebuildFromCheckpoint();
+      hitSounds.Refreeze();
+      audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition);
     }
+    visuals.RefreezePreparedEffects();
     session.AudioReleasedForInput = false;
     session.TimelineRebasedForInput = false;
   }
@@ -80,10 +82,8 @@ internal sealed class FrozenRuntimeRestorer
       visuals.RestoreAll();
       if (session.HasAudioSnapshot && audioTimeline.IsAvailable && restartAudio && !session.AudioReleasedForInput)
       {
-        if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition))
-        {
-          hitSounds.RebuildFromCheckpoint();
-        }
+        audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition);
+        hitSounds.Reset();
         unpausePrimedSources = !session.AudioSnapshot.ListenerPaused;
       }
       logSongSources =

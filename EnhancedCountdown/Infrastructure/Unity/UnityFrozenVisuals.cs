@@ -14,6 +14,7 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
   private readonly IModLogger logger;
   private scrVfxPlus frozenVfx;
   private double orbitStartedRealtime;
+  private bool preparedEffectsResumed;
 
   internal UnityFrozenVisuals(IModLogger logger)
   {
@@ -37,6 +38,7 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
     }
 
     frozenVfx = scrVfxPlus.instance;
+    preparedEffectsResumed = false;
     frozenVfx.pausedTweens.Clear();
     frozenVfx.ScrubToTime((float)logicalSongPosition);
     foreach (Tween tween in frozenVfx.pausedTweens)
@@ -46,6 +48,11 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
         tween.Pause();
       }
     }
+  }
+
+  public FrozenVisualWarmupSample CaptureWarmupSample()
+  {
+    return new FrozenVisualWarmupSample(frozenVfx?.pausedTweens?.Count ?? 0, Math.Max(0.0, Time.unscaledDeltaTime));
   }
 
   public void StartPreLandingMotion(MetronomePlayback? playback)
@@ -209,6 +216,40 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
     frozenOrbits.Remove(player);
   }
 
+  public void ResumePreparedEffects()
+  {
+    if (preparedEffectsResumed || frozenVfx == null)
+    {
+      return;
+    }
+
+    foreach (Tween tween in frozenVfx.pausedTweens)
+    {
+      if (tween != null && tween.active)
+      {
+        tween.Play();
+      }
+    }
+    preparedEffectsResumed = true;
+  }
+
+  public void RefreezePreparedEffects()
+  {
+    if (!preparedEffectsResumed || frozenVfx == null)
+    {
+      return;
+    }
+
+    foreach (Tween tween in frozenVfx.pausedTweens)
+    {
+      if (tween != null && tween.active)
+      {
+        tween.Pause();
+      }
+    }
+    preparedEffectsResumed = false;
+  }
+
   private static void RestoreOrbit(FrozenOrbitState orbit)
   {
     if (orbit.ChosenPlanet == null)
@@ -229,15 +270,10 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
       return;
     }
 
-    foreach (Tween tween in frozenVfx.pausedTweens)
-    {
-      if (tween != null && tween.active)
-      {
-        tween.Play();
-      }
-    }
+    ResumePreparedEffects();
     frozenVfx.pausedTweens.Clear();
     frozenVfx = null;
+    preparedEffectsResumed = false;
   }
 
   private readonly struct FrozenOrbitState

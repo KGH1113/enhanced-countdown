@@ -21,6 +21,13 @@ internal sealed class FrozenStartSession
   internal double FrozenAudioSongPosition { get; set; }
   internal bool AudioReleasedForInput { get; set; }
   internal bool TimelineRebasedForInput { get; set; }
+  internal int WarmupStartedFrame { get; set; }
+  internal int WarmupRenderedFrames { get; set; }
+  internal int WarmupStableFrames { get; set; }
+  internal int WarmupTweenCount { get; set; } = -1;
+  internal double WarmupFrameDurationSeconds { get; set; }
+  internal double WarmupStartedRealtime { get; set; }
+  internal long InputResumeStartedTimestamp { get; set; }
 
   internal void ClearPendingInput()
   {

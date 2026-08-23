@@ -6,8 +6,11 @@ internal interface IFrozenVisuals
 {
   void HideStartUi(scrController controller);
   void ScrubToTime(double logicalSongPosition);
+  FrozenVisualWarmupSample CaptureWarmupSample();
   void StartPreLandingMotion(MetronomePlayback? playback);
   void UpdatePreLandingMotion();
   void RestorePlayer(scrPlayer player);
+  void ResumePreparedEffects();
+  void RefreezePreparedEffects();
   void RestoreAll();
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
 
@@ -6,8 +7,13 @@ namespace EnhancedCountdown.Application.MidRun;
 
 internal sealed partial class MidRunCoordinator
 {
+  private const int MinimumWarmupFrames = 2;
+  private const int MaximumWarmupFrames = 5;
+  private const double WarmupFrameDurationTolerance = 0.25;
+
   private readonly IGameWorld gameWorld;
   private readonly IAudioTimeline audioTimeline;
+  private readonly IHitSoundScheduler hitSounds;
   private readonly IMetronome metronome;
   private readonly IFrozenVisuals visuals;
   private readonly IModLogger logger;
@@ -19,6 +25,7 @@ internal sealed partial class MidRunCoordinator
   internal MidRunCoordinator(
     IGameWorld gameWorld,
     IAudioTimeline audioTimeline,
+    IHitSoundScheduler hitSounds,
     IMetronome metronome,
     IFrozenVisuals visuals,
     IModLogger logger,
@@ -28,6 +35,7 @@ internal sealed partial class MidRunCoordinator
   {
     this.gameWorld = gameWorld;
     this.audioTimeline = audioTimeline;
+    this.hitSounds = hitSounds;
     this.metronome = metronome;
     this.visuals = visuals;
     this.logger = logger;
@@ -36,6 +44,7 @@ internal sealed partial class MidRunCoordinator
   }
 
   internal bool IsFrozen => session?.Phase == FrozenStartPhase.Frozen;
+  private bool IsWarming => session?.Phase == FrozenStartPhase.Warming;
 
   internal void OnStartRewind(scrController controller, int requestedFloor)
   {
@@ -45,6 +54,12 @@ internal sealed partial class MidRunCoordinator
       return;
     }
     string fallbackReason = gameWorld.GetNativeCountdownFallbackReason();
+    if (fallbackReason != null)
+    {
+      logger.Log($"Using the game's native countdown because {fallbackReason}.");
+      return;
+    }
+    fallbackReason = hitSounds.GetCompatibilityFailureReason();
     if (fallbackReason != null)
     {
       logger.Log($"Using the game's native countdown because {fallbackReason}.");
@@ -99,6 +114,10 @@ internal sealed partial class MidRunCoordinator
 
   internal bool PreparePlayerUpdate(scrPlayer player, ref ulong? targetTick)
   {
+    if (IsWarming)
+    {
+      return false;
+    }
     if (!IsFrozen)
     {
       return true;
@@ -129,6 +148,7 @@ internal sealed partial class MidRunCoordinator
     session.PendingInputTick = targetTick;
     targetTick = null;
     session.PendingInputPlayer = player;
+    session.InputResumeStartedTimestamp = Stopwatch.GetTimestamp();
     runtimeRestorer.ReleaseAudioForInput(session);
     logger.Log(gameWorld.DescribeInput(player));
     return true;
@@ -181,12 +201,21 @@ internal sealed partial class MidRunCoordinator
     }
 
     logger.Log("The first input landed naturally at the frozen Pure Perfect angle.");
+    long inputResumeStartedTimestamp = session.InputResumeStartedTimestamp;
+    int warmupRenderedFrames = session.WarmupRenderedFrames;
+    int warmupTweenCount = session.WarmupTweenCount;
     session.ClearPendingInput();
     ReleaseFrozenStart();
+    double resumeMilliseconds = (Stopwatch.GetTimestamp() - inputResumeStartedTimestamp) * 1000.0 / Stopwatch.Frequency;
+    logger.Log(
+      $"Accepted frozen input after prepared resume work in {resumeMilliseconds:F3} ms; "
+        + $"warmupFrames={warmupRenderedFrames}, tweens={warmupTweenCount}."
+    );
   }
 
   internal void PumpAsyncInput()
   {
+    hitSounds.Pump();
     if (!IsFrozen)
     {
       return;
@@ -205,6 +234,11 @@ internal sealed partial class MidRunCoordinator
 
   internal void PumpFrozenVisuals()
   {
+    if (IsWarming)
+    {
+      PumpWarmup();
+      return;
+    }
     if (IsFrozen)
     {
       metronome.UpdateDisplay();
@@ -219,7 +253,7 @@ internal sealed partial class MidRunCoordinator
 
   internal void OnPauseRequested(scrController controller)
   {
-    if (IsFrozen && controller == session.Controller && gameWorld.IsPauseRequest(controller))
+    if ((IsFrozen || IsWarming) && controller == session.Controller && gameWorld.IsPauseRequest(controller))
     {
       RestoreAndReset("pause requested");
     }
@@ -276,6 +310,7 @@ internal sealed partial class MidRunCoordinator
     session.Phase = FrozenStartPhase.Releasing;
     runtimeRestorer.Restore(session, restartAudio: true);
     audioTimeline.RebaseAsyncInputClock();
+    hitSounds.Reset(keepInstalledSchedule: true);
     logger.Log("Resumed the loaded run from the frozen Pure Perfect timestamp.");
     ResetSession();
   }
@@ -283,15 +318,73 @@ internal sealed partial class MidRunCoordinator
   private void RestoreAndReset(string reason)
   {
     metronome.Stop(reason);
-    if (session?.Phase is FrozenStartPhase.Frozen or FrozenStartPhase.Preparing or FrozenStartPhase.Releasing)
+    if (
+      session?.Phase
+      is FrozenStartPhase.Warming
+        or FrozenStartPhase.Frozen
+        or FrozenStartPhase.Preparing
+        or FrozenStartPhase.Releasing
+    )
     {
       runtimeRestorer.Restore(
         session,
-        restartAudio: session.Phase is FrozenStartPhase.Frozen or FrozenStartPhase.Preparing
+        restartAudio: session.Phase is FrozenStartPhase.Warming or FrozenStartPhase.Frozen or FrozenStartPhase.Preparing
       );
       logger.Log($"Cleared frozen start state: {reason}.");
     }
     ResetSession();
+  }
+
+  private void PumpWarmup()
+  {
+    if (!gameWorld.IsRuntimeValid(session.Controller))
+    {
+      RestoreAndReset("run became invalid during visual warmup");
+      return;
+    }
+    if (gameWorld.CurrentFrame <= session.WarmupStartedFrame)
+    {
+      return;
+    }
+
+    FrozenVisualWarmupSample sample = visuals.CaptureWarmupSample();
+    bool tweenCountStable = session.WarmupTweenCount < 0 || sample.PausedTweenCount == session.WarmupTweenCount;
+    bool frameDurationStable = DurationsAreStable(session.WarmupFrameDurationSeconds, sample.FrameDurationSeconds);
+    session.WarmupStableFrames = tweenCountStable && frameDurationStable ? session.WarmupStableFrames + 1 : 1;
+    session.WarmupTweenCount = sample.PausedTweenCount;
+    session.WarmupFrameDurationSeconds = sample.FrameDurationSeconds;
+    session.WarmupRenderedFrames++;
+    session.WarmupStartedFrame = gameWorld.CurrentFrame;
+
+    bool stable =
+      session.WarmupRenderedFrames >= MinimumWarmupFrames && session.WarmupStableFrames >= MinimumWarmupFrames;
+    if (!stable && session.WarmupRenderedFrames < MaximumWarmupFrames)
+    {
+      return;
+    }
+
+    session.FrozenFrame = gameWorld.CurrentFrame;
+    session.Phase = FrozenStartPhase.Frozen;
+    MetronomePlayback? playback = metronome.Start();
+    visuals.StartPreLandingMotion(playback);
+    double warmupMilliseconds =
+      (DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond - session.WarmupStartedRealtime) * 1000.0;
+    logger.Log(
+      $"Completed frozen visual warmup: frames={session.WarmupRenderedFrames}, "
+        + $"stableFrames={session.WarmupStableFrames}, tweens={session.WarmupTweenCount}, "
+        + $"elapsedMs={warmupMilliseconds:F3}."
+    );
+  }
+
+  private static bool DurationsAreStable(double previous, double current)
+  {
+    if (previous <= 0.0 || current <= 0.0)
+    {
+      return previous <= 0.0 && current <= 0.0;
+    }
+    double larger = Math.Max(previous, current);
+    double smaller = Math.Min(previous, current);
+    return (larger - smaller) / smaller <= WarmupFrameDurationTolerance;
   }
 
   private void ResetSession()

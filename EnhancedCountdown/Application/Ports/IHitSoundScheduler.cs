@@ -2,5 +2,10 @@ namespace EnhancedCountdown.Application.Ports;
 
 internal interface IHitSoundScheduler
 {
-  void RebuildFromCheckpoint();
+  string GetCompatibilityFailureReason();
+  bool Prepare();
+  void Activate();
+  void Refreeze();
+  void Reset(bool keepInstalledSchedule = false);
+  void Pump();
 }

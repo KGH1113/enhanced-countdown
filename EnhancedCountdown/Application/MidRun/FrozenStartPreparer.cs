@@ -8,6 +8,7 @@ internal sealed class FrozenStartPreparer
 {
   private readonly IGameWorld gameWorld;
   private readonly IAudioTimeline audioTimeline;
+  private readonly IHitSoundScheduler hitSounds;
   private readonly IMetronome metronome;
   private readonly IFrozenVisuals visuals;
   private readonly IModLogger logger;
@@ -15,6 +16,7 @@ internal sealed class FrozenStartPreparer
   internal FrozenStartPreparer(
     IGameWorld gameWorld,
     IAudioTimeline audioTimeline,
+    IHitSoundScheduler hitSounds,
     IMetronome metronome,
     IFrozenVisuals visuals,
     IModLogger logger
@@ -22,6 +24,7 @@ internal sealed class FrozenStartPreparer
   {
     this.gameWorld = gameWorld;
     this.audioTimeline = audioTimeline;
+    this.hitSounds = hitSounds;
     this.metronome = metronome;
     this.visuals = visuals;
     this.logger = logger;
@@ -72,16 +75,20 @@ internal sealed class FrozenStartPreparer
     visuals.ScrubToTime(session.FrozenSongPosition);
     audioTimeline.PrimeSongSources();
     audioTimeline.PauseListener();
+    if (!audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition) || !hitSounds.Prepare())
+    {
+      logger.Log("The prepared hit-sound schedule is unavailable; continuing without a frozen start.");
+      return false;
+    }
     visuals.HideStartUi(session.Controller);
 
-    session.FrozenFrame = gameWorld.CurrentFrame;
-    session.Phase = FrozenStartPhase.Frozen;
-    MetronomePlayback? playback = metronome.Start();
-    visuals.StartPreLandingMotion(playback);
+    session.WarmupStartedFrame = gameWorld.CurrentFrame;
+    session.WarmupStartedRealtime = DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
+    session.Phase = FrozenStartPhase.Warming;
     logger.Log(
-      $"Frozen editor start at tile {gameWorld.GetCurrentFloorId(primary)}, "
+      $"Warming frozen editor start at tile {gameWorld.GetCurrentFloorId(primary)}, "
         + $"song time {session.FrozenSongPosition:F6}, audio time {session.FrozenAudioSongPosition:F6}, "
-        + "with the next input at Pure Perfect."
+        + "with gameplay and audio paused."
     );
     return true;
   }
