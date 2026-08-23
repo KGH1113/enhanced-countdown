@@ -25,10 +25,19 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   private readonly Toggle enabledToggle;
   private readonly Image toggleTrack;
   private readonly RectTransform toggleKnob;
+  private readonly Slider volumeSlider;
+  private readonly TMP_Text volumeValueText;
+  private readonly Button muteButton;
+  private readonly Image muteButtonImage;
+  private readonly Image volumeIcon;
+  private readonly Image volumeXIcon;
   private readonly Action<MetronomeSettings> settingsChanged;
+  private readonly Action<int> volumeChanged;
+  private readonly Action<bool> muteChanged;
   private readonly Action disableRequested;
   private readonly double placeholderBpm;
   private MetronomeSettings settings;
+  private bool isMuted;
   private int suppressInputThroughFrame = -1;
 
   private UnityMetronomeControlPanel(
@@ -36,7 +45,11 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     GameObject root,
     MetronomeSettings settings,
     double placeholderBpm,
+    int volumePercent,
+    bool isMuted,
     Action<MetronomeSettings> settingsChanged,
+    Action<int> volumeChanged,
+    Action<bool> muteChanged,
     Action disableRequested
   )
   {
@@ -44,7 +57,10 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     this.root = root;
     this.settings = settings;
     this.placeholderBpm = placeholderBpm;
+    this.isMuted = isMuted;
     this.settingsChanged = settingsChanged;
+    this.volumeChanged = volumeChanged;
+    this.muteChanged = muteChanged;
     this.disableRequested = disableRequested;
     panel = RequireDescendant<RectTransform>(root.transform, "MetronomeControlPanel");
     bpmInput = Require<TMP_InputField>(panel, "BpmInput");
@@ -54,6 +70,12 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     enabledToggle = Require<Toggle>(panel, "EnabledToggle");
     toggleTrack = Require<Image>(enabledToggle.transform, "ToggleTrack");
     toggleKnob = Require<RectTransform>(enabledToggle.transform, "ToggleKnob");
+    volumeSlider = Require<Slider>(panel, "VolumeSlider");
+    volumeValueText = Require<TMP_Text>(panel, "VolumeValue");
+    muteButton = Require<Button>(panel, "MuteButton");
+    muteButtonImage = muteButton.GetComponent<Image>();
+    volumeIcon = Require<Image>(muteButton.transform, "VolumeIcon");
+    volumeXIcon = Require<Image>(muteButton.transform, "VolumeXIcon");
 
     BindMultiplier("Divide2Button", 0.5m);
     BindMultiplier("Multiply2Button", 2m);
@@ -63,8 +85,12 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     numeratorDropdown.onValueChanged.AddListener(CommitNumerator);
     denominatorDropdown.onValueChanged.AddListener(CommitDenominator);
     enabledToggle.onValueChanged.AddListener(CommitEnabled);
+    volumeSlider.onValueChanged.AddListener(CommitVolume);
+    muteButton.onClick.AddListener(CommitMute);
     enabledToggle.SetIsOnWithoutNotify(true);
+    volumeSlider.SetValueWithoutNotify(Math.Clamp(volumePercent, 0, 100));
     RefreshToggle();
+    RefreshAudioControls();
     Refresh();
     root.SetActive(true);
   }
@@ -105,7 +131,11 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   internal static UnityMetronomeControlPanel Load(
     MetronomeSettings settings,
     double placeholderBpm,
+    int volumePercent,
+    bool isMuted,
     Action<MetronomeSettings> settingsChanged,
+    Action<int> volumeChanged,
+    Action<bool> muteChanged,
     Action disableRequested
   )
   {
@@ -141,7 +171,11 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
         root,
         settings,
         placeholderBpm,
+        volumePercent,
+        isMuted,
         settingsChanged,
+        volumeChanged,
+        muteChanged,
         disableRequested
       );
     }
@@ -179,6 +213,14 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     if (enabledToggle != null)
     {
       enabledToggle.onValueChanged.RemoveListener(CommitEnabled);
+    }
+    if (volumeSlider != null)
+    {
+      volumeSlider.onValueChanged.RemoveListener(CommitVolume);
+    }
+    if (muteButton != null)
+    {
+      muteButton.onClick.RemoveListener(CommitMute);
     }
     if (root != null)
     {
@@ -258,6 +300,24 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     }
   }
 
+  private void CommitVolume(float value)
+  {
+    int volumePercent = Math.Clamp(Mathf.RoundToInt(value), 0, 100);
+    volumeSlider.SetValueWithoutNotify(volumePercent);
+    RefreshAudioControls();
+    SuppressInput();
+    volumeChanged?.Invoke(volumePercent);
+  }
+
+  private void CommitMute()
+  {
+    isMuted = !isMuted;
+    RefreshAudioControls();
+    SuppressInput();
+    ClearTransientSelection(force: true);
+    muteChanged?.Invoke(isMuted);
+  }
+
   private void Apply(MetronomeSettings updated)
   {
     settings = updated;
@@ -294,6 +354,18 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     Vector2 position = toggleKnob.anchoredPosition;
     position.x = enabled ? travel : -travel;
     toggleKnob.anchoredPosition = position;
+  }
+
+  private void RefreshAudioControls()
+  {
+    int volumePercent = Mathf.RoundToInt(volumeSlider.value);
+    volumeValueText.text = $"{volumePercent}%";
+    if (muteButtonImage != null)
+    {
+      muteButtonImage.color = isMuted ? new Color32(68, 191, 255, 255) : new Color32(24, 26, 33, 245);
+    }
+    volumeIcon.gameObject.SetActive(!isMuted);
+    volumeXIcon.gameObject.SetActive(isMuted);
   }
 
   private void ClearTransientSelection(bool force = false)

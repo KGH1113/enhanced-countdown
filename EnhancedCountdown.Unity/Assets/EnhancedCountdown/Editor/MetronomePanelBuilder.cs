@@ -24,6 +24,8 @@ namespace EnhancedCountdown.Editor
         private const string PanelSpritePath = ArtRoot + "/rounded-panel.png";
         private const string ToggleTrackSpritePath = ArtRoot + "/toggle-pill.png";
         private const string ToggleKnobSpritePath = ArtRoot + "/toggle-knob.png";
+        private const string VolumeXIconPath = ArtRoot + "/volume-x.png";
+        private const string Volume2IconPath = ArtRoot + "/volume-2.png";
         private const string FontSourcePath = FontRoot + "/MAPLESTORY_OTF_BOLD.OTF";
         private const string FontAssetPath = FontRoot + "/MAPLESTORY_OTF_BOLD Dynamic SDF.asset";
         private const string PrefabPath = PrefabRoot + "/MetronomeControlPanel.prefab";
@@ -57,6 +59,7 @@ namespace EnhancedCountdown.Editor
             EnsureAssetFolders();
             EnsureRoundedPanelArt();
             EnsureToggleArt();
+            EnsureAudioArt();
             TMP_FontAsset font = EnsureFontAsset();
             CreatePanelPrefab(font);
             CreatePreviewScene();
@@ -79,6 +82,25 @@ namespace EnhancedCountdown.Editor
         public static void BuildAllBundles()
         {
             RebuildPanelAndPreview();
+            BuildBundle(BuildTarget.StandaloneOSX, "mac");
+            BuildBundle(BuildTarget.StandaloneWindows64, "win");
+            BuildBundle(BuildTarget.StandaloneLinux64, "linux");
+        }
+
+        [MenuItem("Enhanced Countdown/UI/Apply Preview Overrides and Build All UI Bundles _F8")]
+        public static void ApplyPreviewOverridesAndBuildAllBundles()
+        {
+            GameObject previewInstance = GameObject.Find("MetronomePanelPreview/MetronomeControlPanel");
+            if (previewInstance == null || !PrefabUtility.IsPartOfPrefabInstance(previewInstance))
+            {
+                throw new InvalidOperationException(
+                    "Open the Enhanced Countdown preview scene before building edited UI assets.");
+            }
+
+            PrefabUtility.ApplyPrefabInstance(previewInstance, InteractionMode.AutomatedAction);
+            EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+
             BuildBundle(BuildTarget.StandaloneOSX, "mac");
             BuildBundle(BuildTarget.StandaloneWindows64, "win");
             BuildBundle(BuildTarget.StandaloneLinux64, "linux");
@@ -130,7 +152,14 @@ namespace EnhancedCountdown.Editor
             Sprite panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>(PanelSpritePath);
             Sprite toggleTrackSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ToggleTrackSpritePath);
             Sprite toggleKnobSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ToggleKnobSpritePath);
-            if (panelSprite == null || toggleTrackSprite == null || toggleKnobSprite == null)
+            Sprite volumeXIcon = AssetDatabase.LoadAssetAtPath<Sprite>(VolumeXIconPath);
+            Sprite volume2Icon = AssetDatabase.LoadAssetAtPath<Sprite>(Volume2IconPath);
+            if (
+                panelSprite == null
+                || toggleTrackSprite == null
+                || toggleKnobSprite == null
+                || volumeXIcon == null
+                || volume2Icon == null)
             {
                 throw new InvalidOperationException("One or more metronome UI sprites are unavailable.");
             }
@@ -160,7 +189,7 @@ namespace EnhancedCountdown.Editor
                     new Vector2(1f, 0f),
                     new Vector2(1f, 0f),
                     new Vector2(-24f, 24f),
-                    new Vector2(360f, 285f));
+                    new Vector2(360f, 355f));
                 panel.type = Image.Type.Sliced;
                 panel.raycastTarget = true;
 
@@ -181,7 +210,7 @@ namespace EnhancedCountdown.Editor
                     "HeaderText",
                     panel.transform,
                     font,
-                    "METRONOME",
+                    "Enhanced Countdown",
                     15f,
                     FontStyles.Bold,
                     AccentColor,
@@ -238,6 +267,22 @@ namespace EnhancedCountdown.Editor
                     new Vector2(21f, -190.5f),
                     new Vector2(318f, 1f));
 
+                CreateVolumeControls(
+                    panel.transform,
+                    toggleKnobSprite,
+                    volume2Icon,
+                    volumeXIcon,
+                    font);
+
+                Image volumeDivider = CreateImage("VolumeDivider", panel.transform, null, new Color(1f, 1f, 1f, 0.09f));
+                SetRect(
+                    volumeDivider.rectTransform,
+                    new Vector2(0f, 1f),
+                    new Vector2(0f, 1f),
+                    new Vector2(0f, 1f),
+                    new Vector2(21f, -260.5f),
+                    new Vector2(318f, 1f));
+
                 CreateText(
                     "TimeSignatureLabel",
                     panel.transform,
@@ -250,10 +295,10 @@ namespace EnhancedCountdown.Editor
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(21f, -205.5f),
+                    new Vector2(21f, -275.5f),
                     new Vector2(318f, 16.5f));
 
-                CreateDropdown("NumeratorDropdown", panel.transform, panelSprite, font, new Vector2(39f, -229.5f));
+                CreateDropdown("NumeratorDropdown", panel.transform, panelSprite, font, new Vector2(39f, -299.5f));
                 CreateText(
                     "TimeSignatureSlash",
                     panel.transform,
@@ -266,9 +311,9 @@ namespace EnhancedCountdown.Editor
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
                     new Vector2(0f, 1f),
-                    new Vector2(165f, -229.5f),
+                    new Vector2(165f, -299.5f),
                     new Vector2(30f, 39f));
-                CreateDropdown("DenominatorDropdown", panel.transform, panelSprite, font, new Vector2(201f, -229.5f));
+                CreateDropdown("DenominatorDropdown", panel.transform, panelSprite, font, new Vector2(201f, -299.5f));
 
                 GameObject prefab = PrefabUtility.SaveAsPrefabAsset(overlay, PrefabPath);
                 if (prefab == null)
@@ -284,6 +329,197 @@ namespace EnhancedCountdown.Editor
             {
                 UnityEngine.Object.DestroyImmediate(overlay);
             }
+        }
+
+        private static void CreateVolumeControls(
+            Transform parent,
+            Sprite circleSprite,
+            Sprite volume2Icon,
+            Sprite volumeXIcon,
+            TMP_FontAsset font)
+        {
+            CreateText(
+                "VolumeLabel",
+                parent,
+                font,
+                "VOLUME",
+                12.75f,
+                FontStyles.Bold,
+                SecondaryTextColor,
+                TextAlignmentOptions.MidlineLeft,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(21f, -204.5f),
+                new Vector2(150f, 16.5f));
+
+            CreateText(
+                "VolumeValue",
+                parent,
+                font,
+                "100%",
+                12.75f,
+                FontStyles.Bold,
+                AccentColor,
+                TextAlignmentOptions.MidlineRight,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(237f, -204.5f),
+                new Vector2(54f, 16.5f));
+
+            var sliderObject = new GameObject("VolumeSlider", typeof(RectTransform), typeof(Slider));
+            sliderObject.transform.SetParent(parent, false);
+            RectTransform sliderRect = sliderObject.GetComponent<RectTransform>();
+            SetRect(
+                sliderRect,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(21f, -224.5f),
+                new Vector2(270f, 28f));
+
+            var trackObject = new GameObject("Track", typeof(RectTransform));
+            trackObject.transform.SetParent(sliderObject.transform, false);
+            RectTransform track = trackObject.GetComponent<RectTransform>();
+            SetRect(
+                track,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-16f, -18f));
+            CreatePillVisual(track, circleSprite, new Color32(55, 58, 68, 255), raycastTarget: true);
+
+            var fillAreaObject = new GameObject("Fill Area", typeof(RectTransform));
+            fillAreaObject.transform.SetParent(sliderObject.transform, false);
+            RectTransform fillArea = fillAreaObject.GetComponent<RectTransform>();
+            SetRect(
+                fillArea,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-16f, -18f));
+
+            var fillObject = new GameObject("Fill", typeof(RectTransform));
+            fillObject.transform.SetParent(fillArea, false);
+            RectTransform fill = fillObject.GetComponent<RectTransform>();
+            SetRect(fill, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            CreatePillVisual(fill, circleSprite, AccentColor, raycastTarget: false);
+
+            var handleAreaObject = new GameObject("Handle Slide Area", typeof(RectTransform));
+            handleAreaObject.transform.SetParent(sliderObject.transform, false);
+            RectTransform handleArea = handleAreaObject.GetComponent<RectTransform>();
+            SetRect(handleArea, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-16f, 0f));
+
+            Image handle = CreateImage("Handle", handleArea, circleSprite, PrimaryTextColor);
+            SetRect(
+                handle.rectTransform,
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(20f, 20f));
+            handle.type = Image.Type.Simple;
+            handle.preserveAspect = true;
+            handle.raycastTarget = true;
+
+            Slider slider = sliderObject.GetComponent<Slider>();
+            slider.targetGraphic = handle;
+            slider.fillRect = fill;
+            slider.handleRect = handle.rectTransform;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.minValue = 0f;
+            slider.maxValue = 100f;
+            slider.wholeNumbers = true;
+            slider.SetValueWithoutNotify(100f);
+            slider.colors = CreateControlColors();
+            slider.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            Image muteImage = CreateImage("MuteButton", parent, circleSprite, SurfaceColor);
+            SetRect(
+                muteImage.rectTransform,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(303f, -220.5f),
+                new Vector2(36f, 36f));
+            muteImage.type = Image.Type.Simple;
+            muteImage.preserveAspect = true;
+            muteImage.raycastTarget = true;
+
+            Button muteButton = muteImage.gameObject.AddComponent<Button>();
+            muteButton.targetGraphic = muteImage;
+            muteButton.transition = Selectable.Transition.ColorTint;
+            muteButton.colors = CreateControlColors();
+            muteButton.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            Image volumeIcon = CreateImage("VolumeIcon", muteImage.transform, volume2Icon, SecondaryTextColor);
+            SetRect(
+                volumeIcon.rectTransform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-10f, -10f));
+            volumeIcon.type = Image.Type.Simple;
+            volumeIcon.preserveAspect = true;
+
+            Image volumeX = CreateImage("VolumeXIcon", muteImage.transform, volumeXIcon, PanelColor);
+            SetRect(
+                volumeX.rectTransform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-10f, -10f));
+            volumeX.type = Image.Type.Simple;
+            volumeX.preserveAspect = true;
+            volumeX.gameObject.SetActive(false);
+        }
+
+        private static void CreatePillVisual(
+            Transform parent,
+            Sprite circleSprite,
+            Color color,
+            bool raycastTarget)
+        {
+            const float diameter = 10f;
+
+            Image center = CreateImage("Center", parent, null, color);
+            SetRect(
+                center.rectTransform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-diameter, 0f));
+            center.raycastTarget = raycastTarget;
+
+            Image leftCap = CreateImage("LeftCap", parent, circleSprite, color);
+            SetRect(
+                leftCap.rectTransform,
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(diameter * 0.5f, 0f),
+                new Vector2(diameter, diameter));
+            leftCap.type = Image.Type.Simple;
+            leftCap.preserveAspect = true;
+            leftCap.raycastTarget = raycastTarget;
+
+            Image rightCap = CreateImage("RightCap", parent, circleSprite, color);
+            SetRect(
+                rightCap.rectTransform,
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(-diameter * 0.5f, 0f),
+                new Vector2(diameter, diameter));
+            rightCap.type = Image.Type.Simple;
+            rightCap.preserveAspect = true;
+            rightCap.raycastTarget = raycastTarget;
         }
 
         private static void CreateBpmInput(Transform parent, Sprite panelSprite, TMP_FontAsset font)
@@ -704,6 +940,118 @@ namespace EnhancedCountdown.Editor
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ConfigureSpriteImporter(ToggleTrackSpritePath, Vector4.zero);
             ConfigureSpriteImporter(ToggleKnobSpritePath, Vector4.zero);
+        }
+
+        private static void EnsureAudioArt()
+        {
+            EnsureVolumeIconSpriteFile(VolumeXIconPath, muted: true);
+            EnsureVolumeIconSpriteFile(Volume2IconPath, muted: false);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            ConfigureSpriteImporter(VolumeXIconPath, Vector4.zero);
+            ConfigureSpriteImporter(Volume2IconPath, Vector4.zero);
+        }
+
+        private static void EnsureVolumeIconSpriteFile(string assetPath, bool muted)
+        {
+            const int size = 96;
+            const float scale = size / 24f;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var pixels = new Color32[size * size];
+            Vector2[] speakerPath =
+            {
+                new Vector2(11f, 4.702f),
+                new Vector2(10.5f, 4f),
+                new Vector2(9.797f, 4.204f),
+                new Vector2(6.413f, 7.587f),
+                new Vector2(5.416f, 8f),
+                new Vector2(3f, 8f),
+                new Vector2(2f, 9f),
+                new Vector2(2f, 15f),
+                new Vector2(3f, 16f),
+                new Vector2(5.416f, 16f),
+                new Vector2(6.413f, 16.413f),
+                new Vector2(9.796f, 19.797f),
+                new Vector2(10.5f, 20f),
+                new Vector2(11f, 19.298f),
+                new Vector2(11f, 4.702f),
+            };
+            Vector2[] innerWave =
+            {
+                new Vector2(16f, 9f),
+                new Vector2(17.5f, 10.2f),
+                new Vector2(18f, 12f),
+                new Vector2(17.5f, 13.8f),
+                new Vector2(16f, 15f),
+            };
+            Vector2[] outerWave =
+            {
+                new Vector2(19.364f, 18.364f),
+                new Vector2(21f, 16.5f),
+                new Vector2(22f, 14.3f),
+                new Vector2(22.3f, 12f),
+                new Vector2(22f, 9.7f),
+                new Vector2(21f, 7.5f),
+                new Vector2(19.364f, 5.636f),
+            };
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    Vector2 point = new Vector2((x + 0.5f) / scale, (y + 0.5f) / scale);
+                    float distance = float.MaxValue;
+                    for (int index = 1; index < speakerPath.Length; index++)
+                    {
+                        distance = Mathf.Min(
+                            distance,
+                            DistanceToSegment(point, speakerPath[index - 1], speakerPath[index]));
+                    }
+                    if (muted)
+                    {
+                        distance = Mathf.Min(
+                            distance,
+                            DistanceToSegment(point, new Vector2(22f, 9f), new Vector2(16f, 15f)));
+                        distance = Mathf.Min(
+                            distance,
+                            DistanceToSegment(point, new Vector2(16f, 9f), new Vector2(22f, 15f)));
+                    }
+                    else
+                    {
+                        for (int index = 1; index < innerWave.Length; index++)
+                        {
+                            distance = Mathf.Min(
+                                distance,
+                                DistanceToSegment(point, innerWave[index - 1], innerWave[index]));
+                        }
+                        for (int index = 1; index < outerWave.Length; index++)
+                        {
+                            distance = Mathf.Min(
+                                distance,
+                                DistanceToSegment(point, outerWave[index - 1], outerWave[index]));
+                        }
+                    }
+
+                    byte alpha = (byte)Mathf.RoundToInt(Mathf.Clamp01(1.6f - distance) * 255f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply();
+            File.WriteAllBytes(Path.Combine(ProjectRoot, assetPath), texture.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(texture);
+        }
+
+        private static float DistanceToSegment(Vector2 point, Vector2 start, Vector2 end)
+        {
+            Vector2 segment = end - start;
+            float lengthSquared = segment.sqrMagnitude;
+            if (lengthSquared <= Mathf.Epsilon)
+            {
+                return Vector2.Distance(point, start);
+            }
+            float amount = Mathf.Clamp01(Vector2.Dot(point - start, segment) / lengthSquared);
+            return Vector2.Distance(point, start + segment * amount);
         }
 
         private static void EnsureRoundedSpriteFile(

@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
+using EnhancedCountdown.Infrastructure.Settings;
 using UnityEngine;
 
 namespace EnhancedCountdown.Infrastructure.Unity;
@@ -12,6 +14,8 @@ internal sealed class UnityFrozenMetronome : IMetronome
   private const double SchedulingLeadSeconds = 0.05;
   private const float FallbackAccentGain = 1.35f;
   private readonly IModLogger logger;
+  private readonly string audioSettingsPath;
+  private readonly MetronomeAudioSettings audioSettings;
   private UnityMetronomeControlPanel controlPanel;
   private UnityMetronomeDisplay metronomeDisplay;
   private GameObject metronomeObject;
@@ -30,10 +34,13 @@ internal sealed class UnityFrozenMetronome : IMetronome
   private bool hasSessionSettings;
   private bool isEnabledForSession = true;
   private bool disableRequested;
+  private float sourceBaseVolume = 1f;
 
-  internal UnityFrozenMetronome(IModLogger logger)
+  internal UnityFrozenMetronome(IModLogger logger, string modDirectory)
   {
     this.logger = logger;
+    audioSettingsPath = Path.Combine(modDirectory, "AudioSettings.json");
+    audioSettings = MetronomeAudioSettings.Load(audioSettingsPath);
   }
 
   public bool IsEnabledForSession => isEnabledForSession;
@@ -88,6 +95,7 @@ internal sealed class UnityFrozenMetronome : IMetronome
 
       metronomeObject = new GameObject("EnhancedCountdown Frozen Metronome");
       UnityEngine.Object.DontDestroyOnLoad(metronomeObject);
+      sourceBaseVolume = conductor.hitSoundVolume;
       metronomeSource = CreateSource(metronomeLoopClip, conductor);
       double clickInterval = (double)loopFrames / hatClip.frequency;
       double dspStartTime = AudioSettings.dspTime + SchedulingLeadSeconds;
@@ -123,7 +131,11 @@ internal sealed class UnityFrozenMetronome : IMetronome
         controlPanel = UnityMetronomeControlPanel.Load(
           sessionSettings,
           sessionDefaultClickBpm,
+          audioSettings.VolumePercent,
+          audioSettings.IsMuted,
           RequestSettings,
+          RequestVolume,
+          RequestMute,
           RequestDisable
         );
       }
@@ -290,6 +302,54 @@ internal sealed class UnityFrozenMetronome : IMetronome
     disableRequested = true;
   }
 
+  private void RequestVolume(int volumePercent)
+  {
+    audioSettings.VolumePercent = MetronomeAudioSettings.NormalizeVolume(volumePercent);
+    ApplyAudioSettings();
+    SaveAudioSettings();
+  }
+
+  private void RequestMute(bool isMuted)
+  {
+    audioSettings.IsMuted = isMuted;
+    ApplyAudioSettings();
+    SaveAudioSettings();
+  }
+
+  private void ApplyAudioSettings()
+  {
+    float volume = CurrentSourceVolume();
+    if (metronomeSource != null)
+    {
+      metronomeSource.volume = volume;
+    }
+    if (pendingSource != null)
+    {
+      pendingSource.volume = volume;
+    }
+  }
+
+  private float CurrentSourceVolume()
+  {
+    if (audioSettings.IsMuted)
+    {
+      return 0f;
+    }
+    return sourceBaseVolume * audioSettings.VolumePercent / 100f;
+  }
+
+  private void SaveAudioSettings()
+  {
+    try
+    {
+      audioSettings.Save(audioSettingsPath);
+    }
+    catch (Exception exception)
+    {
+      logger.LogError("Failed to save metronome audio settings", exception);
+    }
+  }
+
   private void PromotePendingPlaybackIfDue()
   {
     if (!hasPendingPlayback || AudioSettings.dspTime < pendingPlayback.DspStartTime)
@@ -403,14 +463,14 @@ internal sealed class UnityFrozenMetronome : IMetronome
   private AudioSource CreateSource(AudioClip clip, scrConductor conductor)
   {
     AudioSource source = metronomeObject.AddComponent<AudioSource>();
-    ConfigureSource(source, clip, conductor.hitSoundVolume, conductor.hitSoundGroup);
+    ConfigureSource(source, clip, CurrentSourceVolume(), conductor.hitSoundGroup);
     return source;
   }
 
   private AudioSource CreateSource(AudioClip clip, AudioSource template)
   {
     AudioSource source = metronomeObject.AddComponent<AudioSource>();
-    ConfigureSource(source, clip, template.volume, template.outputAudioMixerGroup);
+    ConfigureSource(source, clip, CurrentSourceVolume(), template.outputAudioMixerGroup);
     return source;
   }
 

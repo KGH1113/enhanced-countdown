@@ -17,7 +17,14 @@ namespace EnhancedCountdown
         private Toggle enabledToggle;
         private Image toggleTrack;
         private RectTransform toggleKnob;
+        private Slider volumeSlider;
+        private TMP_Text volumeValue;
+        private Button muteButton;
+        private Image muteButtonImage;
+        private Image volumeIcon;
+        private Image volumeXIcon;
         private decimal currentBpm = InitialBpm;
+        private bool isMuted;
 
         private void Awake()
         {
@@ -40,13 +47,23 @@ namespace EnhancedCountdown
             enabledToggle = Require<Toggle>(panel, "EnabledToggle");
             toggleTrack = Require<Image>(enabledToggle.transform, "ToggleTrack");
             toggleKnob = Require<RectTransform>(enabledToggle.transform, "ToggleKnob");
+            volumeSlider = Require<Slider>(panel, "VolumeSlider");
+            volumeValue = Require<TMP_Text>(panel, "VolumeValue");
+            muteButton = Require<Button>(panel, "MuteButton");
+            muteButtonImage = muteButton.GetComponent<Image>();
+            volumeIcon = Require<Image>(muteButton.transform, "VolumeIcon");
+            volumeXIcon = Require<Image>(muteButton.transform, "VolumeXIcon");
             numerator.SetValueWithoutNotify(3);
             denominator.SetValueWithoutNotify(3);
 
             bpmInput.onEndEdit.AddListener(CommitBpm);
             enabledToggle.onValueChanged.AddListener(RefreshToggle);
+            volumeSlider.onValueChanged.AddListener(RefreshVolume);
+            muteButton.onClick.AddListener(ToggleMute);
             RefreshBpmText();
             RefreshToggle(enabledToggle.isOn);
+            RefreshVolume(volumeSlider.value);
+            RefreshMute();
         }
 
         private void OnDestroy()
@@ -58,6 +75,14 @@ namespace EnhancedCountdown
             if (enabledToggle != null)
             {
                 enabledToggle.onValueChanged.RemoveListener(RefreshToggle);
+            }
+            if (volumeSlider != null)
+            {
+                volumeSlider.onValueChanged.RemoveListener(RefreshVolume);
+            }
+            if (muteButton != null)
+            {
+                muteButton.onClick.RemoveListener(ToggleMute);
             }
         }
 
@@ -107,6 +132,24 @@ namespace EnhancedCountdown
             Vector2 position = toggleKnob.anchoredPosition;
             position.x = enabled ? travel : -travel;
             toggleKnob.anchoredPosition = position;
+        }
+
+        private void RefreshVolume(float value)
+        {
+            volumeValue.text = $"{Mathf.RoundToInt(value)}%";
+        }
+
+        private void ToggleMute()
+        {
+            isMuted = !isMuted;
+            RefreshMute();
+        }
+
+        private void RefreshMute()
+        {
+            muteButtonImage.color = isMuted ? new Color32(68, 191, 255, 255) : new Color32(24, 26, 33, 245);
+            volumeIcon.gameObject.SetActive(!isMuted);
+            volumeXIcon.gameObject.SetActive(isMuted);
         }
 
         private static bool TryParseBpm(string value, out decimal bpm)
