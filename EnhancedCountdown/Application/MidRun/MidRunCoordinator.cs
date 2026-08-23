@@ -145,7 +145,6 @@ internal sealed partial class MidRunCoordinator
     }
 
     metronome.Stop("first input accepted");
-    session.PendingInputTick = targetTick;
     targetTick = null;
     session.PendingInputPlayer = player;
     session.InputResumeStartedTimestamp = Stopwatch.GetTimestamp();

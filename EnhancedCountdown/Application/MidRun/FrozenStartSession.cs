@@ -15,7 +15,6 @@ internal sealed class FrozenStartSession
   internal AudioRuntimeSnapshot AudioSnapshot { get; set; }
   internal bool HasAudioSnapshot { get; set; }
   internal scrPlayer PendingInputPlayer { get; set; }
-  internal ulong? PendingInputTick { get; set; }
   internal int FrozenFrame { get; set; }
   internal double FrozenSongPosition { get; set; }
   internal double FrozenAudioSongPosition { get; set; }
@@ -32,6 +31,5 @@ internal sealed class FrozenStartSession
   internal void ClearPendingInput()
   {
     PendingInputPlayer = null;
-    PendingInputTick = null;
   }
 }

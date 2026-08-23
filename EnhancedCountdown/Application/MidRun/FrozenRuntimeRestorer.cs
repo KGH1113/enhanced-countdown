@@ -30,13 +30,11 @@ internal sealed class FrozenRuntimeRestorer
       return;
     }
 
-    double elapsed = audioTimeline.GetInputElapsedSeconds(session.PendingInputTick);
-    audioTimeline.AdvanceAndReleasePrimedSources(elapsed);
+    audioTimeline.ReleasePrimedSources();
     session.AudioReleasedForInput = true;
     logger.Log(
-      "Released the primed audio on the first input while keeping the judgment timeline frozen, "
-        + $"inputElapsedMs={elapsed * 1000.0:F3}, "
-        + $"resumedSong={session.FrozenSongPosition + elapsed * audioTimeline.Pitch:F6}."
+      "Released the already-primed audio on the first input without seeking, "
+        + $"resumedSong={session.FrozenSongPosition:F6}."
     );
   }
 
@@ -47,8 +45,7 @@ internal sealed class FrozenRuntimeRestorer
       return;
     }
 
-    double elapsed = audioTimeline.GetInputElapsedSeconds(session.PendingInputTick);
-    if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition, elapsed))
+    if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition))
     {
       hitSounds.Activate();
       session.TimelineRebasedForInput = true;

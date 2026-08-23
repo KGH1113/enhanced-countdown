@@ -65,17 +65,6 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     AudioListener.pause = true;
   }
 
-  public double GetInputElapsedSeconds(ulong? inputTick)
-  {
-    if (!inputTick.HasValue || !AsyncInputManager.isActive)
-    {
-      return 0.0;
-    }
-
-    ulong currentTick = (ulong)DateTime.Now.Ticks;
-    return currentTick > inputTick.Value ? (currentTick - inputTick.Value) / 10000000.0 : 0.0;
-  }
-
   public bool RebaseAtFrozenTime(double frozenSongPosition, double elapsedSinceFirstInput = 0.0)
   {
     if (conductor?.song == null || conductor.song.pitch == 0f)
@@ -102,15 +91,10 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     return true;
   }
 
-  public void AdvanceAndReleasePrimedSources(double elapsedSinceFirstInput)
+  public void ReleasePrimedSources()
   {
-    if (elapsedSinceFirstInput > 0.0)
-    {
-      AdvancePrimedSongSource(conductor.song, elapsedSinceFirstInput);
-      AdvancePrimedSongSource(conductor.song2, elapsedSinceFirstInput);
-      AdvancePrimedSongSource(conductor.song3, elapsedSinceFirstInput);
-    }
-
+    // PrimeSongSources already sought each clip during warmup. Rewriting AudioSource.time here
+    // can synchronously seek compressed clips and make short post-start tiles immediately overdue.
     UnpauseSongSources();
     AudioListener.pause = false;
   }
@@ -217,17 +201,6 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     source.Play();
     source.time = Mathf.Clamp(preparedAudioTime, 0f, source.clip.length);
     source.Pause();
-  }
-
-  private void AdvancePrimedSongSource(AudioSource source, double elapsedSinceFirstInput)
-  {
-    if (source == null || source.clip == null)
-    {
-      return;
-    }
-
-    float resumedTime = preparedAudioTime + (float)(elapsedSinceFirstInput * source.pitch);
-    source.time = Mathf.Clamp(resumedTime, 0f, source.clip.length);
   }
 
   private void UnpauseSongSources()
