@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
 
@@ -56,13 +55,11 @@ internal sealed partial class MidRunCoordinator
     string fallbackReason = gameWorld.GetNativeCountdownFallbackReason();
     if (fallbackReason != null)
     {
-      logger.Log($"Using the game's native countdown because {fallbackReason}.");
       return;
     }
     fallbackReason = hitSounds.GetCompatibilityFailureReason();
     if (fallbackReason != null)
     {
-      logger.Log($"Using the game's native countdown because {fallbackReason}.");
       return;
     }
     int startFloor = gameWorld.ResolveStartFloor(requestedFloor);
@@ -135,10 +132,7 @@ internal sealed partial class MidRunCoordinator
     {
       return false;
     }
-    if (gameWorld.UnlockInputIfNeeded(player))
-    {
-      logger.Log("Released the inherited player input lock after the launch frame.");
-    }
+    gameWorld.UnlockInputIfNeeded(player);
     if (!gameWorld.ValidInputWasTriggered(player))
     {
       return false;
@@ -147,9 +141,7 @@ internal sealed partial class MidRunCoordinator
     metronome.Stop("first input accepted");
     targetTick = null;
     session.PendingInputPlayer = player;
-    session.InputResumeStartedTimestamp = Stopwatch.GetTimestamp();
     runtimeRestorer.ReleaseAudioForInput(session);
-    logger.Log(gameWorld.DescribeInput(player));
     return true;
   }
 
@@ -178,11 +170,7 @@ internal sealed partial class MidRunCoordinator
       return;
     }
 
-    logger.Log("The original input update did not land; retrying the same input through Hit(false).");
-    if (!gameWorld.Hit(player))
-    {
-      logger.Log("The fallback Hit(false) was rejected; keeping the frozen start active.");
-    }
+    gameWorld.Hit(player);
   }
 
   internal void OnManualHitCompleted(scrPlayer player, bool isAuto, bool moved)
@@ -199,17 +187,8 @@ internal sealed partial class MidRunCoordinator
       return;
     }
 
-    logger.Log("The first input landed naturally at the frozen Pure Perfect angle.");
-    long inputResumeStartedTimestamp = session.InputResumeStartedTimestamp;
-    int warmupRenderedFrames = session.WarmupRenderedFrames;
-    int warmupTweenCount = session.WarmupTweenCount;
     session.ClearPendingInput();
     ReleaseFrozenStart();
-    double resumeMilliseconds = (Stopwatch.GetTimestamp() - inputResumeStartedTimestamp) * 1000.0 / Stopwatch.Frequency;
-    logger.Log(
-      $"Accepted frozen input after prepared resume work in {resumeMilliseconds:F3} ms; "
-        + $"warmupFrames={warmupRenderedFrames}, tweens={warmupTweenCount}."
-    );
   }
 
   internal void PumpAsyncInput()
@@ -277,12 +256,10 @@ internal sealed partial class MidRunCoordinator
 
   private void RestartWithNativeCountdown()
   {
-    logger.Log("Metronome disabled for this editor playtest; restarting with the game's native countdown.");
     RestoreAndReset("metronome disabled");
     scnEditor editor = ADOBase.editor;
     if (editor == null)
     {
-      logger.Log("Could not restart with the native countdown because the level editor is unavailable.");
       return;
     }
 
@@ -310,7 +287,6 @@ internal sealed partial class MidRunCoordinator
     runtimeRestorer.Restore(session, restartAudio: true);
     audioTimeline.RebaseAsyncInputClock();
     hitSounds.Reset(keepInstalledSchedule: true);
-    logger.Log("Resumed the loaded run from the frozen Pure Perfect timestamp.");
     ResetSession();
   }
 
@@ -329,7 +305,6 @@ internal sealed partial class MidRunCoordinator
         session,
         restartAudio: session.Phase is FrozenStartPhase.Warming or FrozenStartPhase.Frozen or FrozenStartPhase.Preparing
       );
-      logger.Log($"Cleared frozen start state: {reason}.");
     }
     ResetSession();
   }
@@ -366,13 +341,6 @@ internal sealed partial class MidRunCoordinator
     session.Phase = FrozenStartPhase.Frozen;
     MetronomePlayback? playback = metronome.Start();
     visuals.StartPreLandingMotion(playback);
-    double warmupMilliseconds =
-      (DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond - session.WarmupStartedRealtime) * 1000.0;
-    logger.Log(
-      $"Completed frozen visual warmup: frames={session.WarmupRenderedFrames}, "
-        + $"stableFrames={session.WarmupStableFrames}, tweens={session.WarmupTweenCount}, "
-        + $"elapsedMs={warmupMilliseconds:F3}."
-    );
   }
 
   private static bool DurationsAreStable(double previous, double current)

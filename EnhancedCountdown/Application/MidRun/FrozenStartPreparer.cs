@@ -9,25 +9,19 @@ internal sealed class FrozenStartPreparer
   private readonly IGameWorld gameWorld;
   private readonly IAudioTimeline audioTimeline;
   private readonly IHitSoundScheduler hitSounds;
-  private readonly IMetronome metronome;
   private readonly IFrozenVisuals visuals;
-  private readonly IModLogger logger;
 
   internal FrozenStartPreparer(
     IGameWorld gameWorld,
     IAudioTimeline audioTimeline,
     IHitSoundScheduler hitSounds,
-    IMetronome metronome,
-    IFrozenVisuals visuals,
-    IModLogger logger
+    IFrozenVisuals visuals
   )
   {
     this.gameWorld = gameWorld;
     this.audioTimeline = audioTimeline;
     this.hitSounds = hitSounds;
-    this.metronome = metronome;
     this.visuals = visuals;
-    this.logger = logger;
   }
 
   internal bool Prepare(FrozenStartSession session)
@@ -60,7 +54,6 @@ internal sealed class FrozenStartPreparer
 
     if (!gameWorld.HasFollowingTile(primary))
     {
-      logger.Log("The selected start has no following manual tile; continuing without a start freeze.");
       session.FrozenSongPosition = audioTimeline.CurrentSongPosition;
       return false;
     }
@@ -77,19 +70,12 @@ internal sealed class FrozenStartPreparer
     audioTimeline.PauseListener();
     if (!audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition) || !hitSounds.Prepare())
     {
-      logger.Log("The prepared hit-sound schedule is unavailable; continuing without a frozen start.");
       return false;
     }
     visuals.HideStartUi(session.Controller);
 
     session.WarmupStartedFrame = gameWorld.CurrentFrame;
-    session.WarmupStartedRealtime = DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
     session.Phase = FrozenStartPhase.Warming;
-    logger.Log(
-      $"Warming frozen editor start at tile {gameWorld.GetCurrentFloorId(primary)}, "
-        + $"song time {session.FrozenSongPosition:F6}, audio time {session.FrozenAudioSongPosition:F6}, "
-        + "with gameplay and audio paused."
-    );
     return true;
   }
 

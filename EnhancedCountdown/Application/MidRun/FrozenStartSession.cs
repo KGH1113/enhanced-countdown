@@ -25,8 +25,6 @@ internal sealed class FrozenStartSession
   internal int WarmupStableFrames { get; set; }
   internal int WarmupTweenCount { get; set; } = -1;
   internal double WarmupFrameDurationSeconds { get; set; }
-  internal double WarmupStartedRealtime { get; set; }
-  internal long InputResumeStartedTimestamp { get; set; }
 
   internal void ClearPendingInput()
   {

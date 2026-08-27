@@ -7,15 +7,9 @@ namespace EnhancedCountdown.Infrastructure.Adofai;
 
 internal sealed class AdofaiAudioTimeline : IAudioTimeline
 {
-  private readonly IModLogger logger;
   private scrConductor conductor;
   private float preparedAudioTime;
   private bool hasPreparedAudioTime;
-
-  internal AdofaiAudioTimeline(IModLogger logger)
-  {
-    this.logger = logger;
-  }
 
   public bool IsAvailable => conductor != null;
   public double CurrentSongPosition => conductor.songposition_minusi;
@@ -83,11 +77,6 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     double resumedSongPosition = frozenSongPosition + elapsedSinceFirstInput * conductor.song.pitch;
     conductor.songposition_minusi = resumedSongPosition;
     conductor.deltaSongPos = 0.0;
-    logger.Log(
-      $"Rebased frozen audio timeline: frozenSong={frozenSongPosition:F6}, "
-        + $"inputElapsedMs={elapsedSinceFirstInput * 1000.0:F3}, resumedSong={resumedSongPosition:F6}, "
-        + $"dsp={now:F6}, dspTimeSong={conductor.dspTimeSong:F6}."
-    );
     return true;
   }
 
@@ -105,7 +94,7 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     AudioListener.pause = true;
   }
 
-  public void Restore(AudioRuntimeSnapshot snapshot, bool unpausePrimedSources, bool logSongSources)
+  public void Restore(AudioRuntimeSnapshot snapshot, bool unpausePrimedSources)
   {
     try
     {
@@ -119,14 +108,6 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
       }
       AudioListener.pause = snapshot.ListenerPaused;
       Time.timeScale = snapshot.TimeScale;
-      if (logSongSources && conductor?.song != null)
-      {
-        logger.Log(
-          $"Resumed song sources: mainPlaying={conductor.song.isPlaying}, "
-            + $"time={conductor.song.time:F3}, volume={conductor.song.volume:F3}, "
-            + $"listenerPaused={AudioListener.pause}."
-        );
-      }
     }
     finally
     {
@@ -144,9 +125,6 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     }
 
     scrConductor activeConductor = ADOBase.conductor;
-    double staleConductorDsp = activeConductor?.dspTime ?? double.NaN;
-    ulong previousOffsetTick = AsyncInputManager.offsetTick;
-
     ulong wallTickBefore = (ulong)DateTime.Now.Ticks;
     double currentDspTime = AudioSettings.dspTime;
     ulong wallTickAfter = (ulong)DateTime.Now.Ticks;
@@ -162,33 +140,11 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
 
     if (activeConductor == null || activeConductor.song == null || activeConductor.song.pitch == 0f)
     {
-      logger.Log(
-        $"Rebased async input clock without an active song: wallTick={nowTick}, dsp={currentDspTime:F6}, "
-          + $"offsetDeltaMs={((double)newOffsetTick - previousOffsetTick) / TimeSpan.TicksPerMillisecond:F3}."
-      );
       return;
     }
 
-    double pitch = activeConductor.song.pitch;
-    double expectedSongPosition =
-      (currentDspTime - activeConductor.dspTimeSong - scrConductor.calibration_i) * pitch - activeConductor.addoffset;
-    double currentSongPosition = activeConductor.songposition_minusi;
-    double mappedDspTime = (nowTick - newOffsetTick) / (double)TimeSpan.TicksPerSecond;
-    double mappedSongPosition =
-      (mappedDspTime - activeConductor.dspTimeSong - scrConductor.calibration_i) * pitch - activeConductor.addoffset;
-    double staleDspMilliseconds = (currentDspTime - staleConductorDsp) * 1000.0;
-    double offsetDeltaMilliseconds = ((double)newOffsetTick - previousOffsetTick) / TimeSpan.TicksPerMillisecond;
-    double storedSongErrorMilliseconds = (currentSongPosition - expectedSongPosition) / pitch * 1000.0;
-    double mappedSongErrorMilliseconds = (mappedSongPosition - expectedSongPosition) / pitch * 1000.0;
-
     activeConductor.dspTime = currentDspTime;
     activeConductor.prev_dspTime = currentDspTime;
-    logger.Log(
-      $"Rebased async input clock: staleDspMs={staleDspMilliseconds:F3}, "
-        + $"offsetDeltaMs={offsetDeltaMilliseconds:F3}, wallTick={nowTick}, dsp={currentDspTime:F6}, "
-        + $"currentSong={currentSongPosition:F6}, expectedSong={expectedSongPosition:F6}, "
-        + $"storedSongErrorMs={storedSongErrorMilliseconds:F3}, mappedSongErrorMs={mappedSongErrorMilliseconds:F3}."
-    );
   }
 
   private void PrimeSongSource(AudioSource source)

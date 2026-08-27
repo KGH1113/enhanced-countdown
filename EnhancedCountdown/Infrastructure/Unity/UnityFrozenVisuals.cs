@@ -11,15 +11,9 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
 {
   private const float FrozenVisualLeadRadians = 0.017453292f;
   private readonly Dictionary<scrPlayer, FrozenOrbitState> frozenOrbits = new();
-  private readonly IModLogger logger;
   private scrVfxPlus frozenVfx;
   private double orbitStartedRealtime;
   private bool preparedEffectsResumed;
-
-  internal UnityFrozenVisuals(IModLogger logger)
-  {
-    this.logger = logger;
-  }
 
   public void HideStartUi(scrController controller)
   {
@@ -82,13 +76,6 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
       var orbit = new FrozenOrbitState(chosenPlanet, chosenPlanet.cosmeticAngle, direction, travelRadians, duration);
       frozenOrbits[player] = orbit;
       ApplyOrbitAngle(orbit, phase: 0.0);
-      if (duration > 0.0)
-      {
-        logger.Log(
-          $"Started frozen orbit at {playback.Value.OriginalBpm:F3} BPM: "
-            + $"travel {travelRadians * 180.0 / Math.PI:F3} degrees, cycle {duration * 1000.0:F3} ms."
-        );
-      }
     }
   }
 

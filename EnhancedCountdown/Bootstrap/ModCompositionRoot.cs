@@ -13,12 +13,12 @@ internal static class ModCompositionRoot
   {
     Shutdown();
     var logger = new ModLogger(entry);
-    var gameWorld = new AdofaiGameWorld(logger);
-    var audioTimeline = new AdofaiAudioTimeline(logger);
+    var gameWorld = new AdofaiGameWorld();
+    var audioTimeline = new AdofaiAudioTimeline();
     var hitSounds = new AdofaiHitSoundScheduler(new ConductorHitSoundAccessor(), logger);
     var metronome = new UnityFrozenMetronome(logger, entry.Path);
-    var visuals = new UnityFrozenVisuals(logger);
-    var startPreparer = new FrozenStartPreparer(gameWorld, audioTimeline, hitSounds, metronome, visuals, logger);
+    var visuals = new UnityFrozenVisuals();
+    var startPreparer = new FrozenStartPreparer(gameWorld, audioTimeline, hitSounds, visuals);
     var runtimeRestorer = new FrozenRuntimeRestorer(audioTimeline, hitSounds, visuals, logger);
     Coordinator = new MidRunCoordinator(
       gameWorld,

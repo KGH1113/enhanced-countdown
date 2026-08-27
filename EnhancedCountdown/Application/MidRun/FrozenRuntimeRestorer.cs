@@ -32,10 +32,6 @@ internal sealed class FrozenRuntimeRestorer
 
     audioTimeline.ReleasePrimedSources();
     session.AudioReleasedForInput = true;
-    logger.Log(
-      "Released the already-primed audio on the first input without seeking, "
-        + $"resumedSong={session.FrozenSongPosition:F6}."
-    );
   }
 
   internal void RebaseTimelineForInput(FrozenStartSession session)
@@ -73,7 +69,6 @@ internal sealed class FrozenRuntimeRestorer
   internal void Restore(FrozenStartSession session, bool restartAudio)
   {
     bool unpausePrimedSources = false;
-    bool logSongSources = false;
     try
     {
       visuals.RestoreAll();
@@ -83,8 +78,6 @@ internal sealed class FrozenRuntimeRestorer
         hitSounds.Reset();
         unpausePrimedSources = !session.AudioSnapshot.ListenerPaused;
       }
-      logSongSources =
-        session.HasAudioSnapshot && audioTimeline.IsAvailable && restartAudio && !session.AudioSnapshot.ListenerPaused;
     }
     catch (Exception exception)
     {
@@ -94,7 +87,7 @@ internal sealed class FrozenRuntimeRestorer
     {
       if (session.HasAudioSnapshot)
       {
-        audioTimeline.Restore(session.AudioSnapshot, unpausePrimedSources, logSongSources);
+        audioTimeline.Restore(session.AudioSnapshot, unpausePrimedSources);
       }
     }
   }

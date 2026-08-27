@@ -73,7 +73,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
     double originalInterval = Math.Abs(conductor.GetCountdownTime(1) - conductor.GetCountdownTime(0));
     if (originalInterval <= 0.0 || double.IsNaN(originalInterval) || double.IsInfinity(originalInterval))
     {
-      logger.Log("Skipped the frozen-start metronome because the game returned an invalid countdown interval.");
       return null;
     }
 
@@ -86,7 +85,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
       AudioClip hatClip = AudioManager.Instance.FindOrLoadAudioClip("sndHat");
       if (hatClip == null)
       {
-        logger.Log("Skipped the frozen-start metronome because sndHat could not be loaded.");
         return null;
       }
 
@@ -144,10 +142,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
         logger.LogError("Failed to create the frozen-start metronome control panel", exception);
         controlPanel = null;
       }
-      logger.Log(
-        $"Started frozen-start metronome at {settings.ClickBpm:F1} BPM with a "
-          + $"{settings.Numerator}/{settings.Denominator} accent pattern (game countdown {originalBpm:F3} BPM)."
-      );
       return playback;
     }
     catch (Exception exception)
@@ -181,7 +175,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
 
   public void Stop(string reason = null)
   {
-    bool wasRunning = metronomeObject != null || metronomeDisplay != null || controlPanel != null;
     controlPanel?.Dispose();
     metronomeDisplay?.Dispose();
     metronomeSource?.Stop();
@@ -212,10 +205,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
     pendingSettings = default;
     hasPlayback = false;
     hasPendingPlayback = false;
-    if (wasRunning && !string.IsNullOrEmpty(reason))
-    {
-      logger.Log($"Stopped frozen-start metronome: {reason}.");
-    }
   }
 
   private void RequestSettings(MetronomeSettings requested)
@@ -237,7 +226,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
         pendingSettings = requested;
       }
       controlPanel?.SetSettings(sessionSettings);
-      logger.Log($"Changed metronome time signature label to {requested.Numerator}/{requested.Denominator}.");
       return;
     }
 
@@ -275,10 +263,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
       replacementSource = null;
       sessionSettings = requested;
       controlPanel?.SetSettings(sessionSettings);
-      logger.Log(
-        $"Scheduled metronome change to {requested.ClickBpm:F1} BPM and "
-          + $"{requested.Numerator}/{requested.Denominator} at DSP {transitionTime:F6}."
-      );
     }
     catch (Exception exception)
     {
@@ -431,7 +415,6 @@ internal sealed class UnityFrozenMetronome : IMetronome
     )
     {
       accentSamples = CreateAmplifiedCopy(weakSamples, FallbackAccentGain);
-      logger.Log("Used an amplified sndHat for the frozen-start accent because sndKick was unavailable.");
     }
 
     int samplesPerBeat = loopFrames * hatClip.channels;

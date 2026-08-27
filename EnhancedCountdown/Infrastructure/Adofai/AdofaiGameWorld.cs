@@ -9,13 +9,6 @@ namespace EnhancedCountdown.Infrastructure.Adofai;
 
 internal sealed class AdofaiGameWorld : IGameWorld
 {
-  internal AdofaiGameWorld(IModLogger logger)
-  {
-    this.logger = logger;
-  }
-
-  private readonly IModLogger logger;
-
   public int CurrentFrame => Time.frameCount;
   public int AutomaticTileSafetyLimit => Math.Max(1, ADOBase.lm.listFloors.Count + 1);
   public bool IsAsyncInputActive => AsyncInputManager.isActive;
@@ -119,11 +112,6 @@ internal sealed class AdofaiGameWorld : IGameWorld
     return player?.currFloor?.nextfloor != null;
   }
 
-  public int GetCurrentFloorId(scrPlayer player)
-  {
-    return player.currFloor.seqID;
-  }
-
   public PerfectTimingInput GetPerfectTimingInput(scrPlayer player, double crotchet)
   {
     scrPlanet planet = player?.planetarySystem?.chosenPlanet;
@@ -181,16 +169,6 @@ internal sealed class AdofaiGameWorld : IGameWorld
   public bool ValidInputWasTriggered(scrPlayer player)
   {
     return player.ValidInputWasTriggered();
-  }
-
-  public string DescribeInput(scrPlayer player)
-  {
-    scrPlanet planet = player.planetarySystem?.chosenPlanet;
-    return planet == null
-      ? "Accepting frozen input."
-      : $"Accepting frozen input at angle {planet.angle:F6}, "
-        + $"target {planet.targetExitAngle:F6}, delta {planet.angle - planet.targetExitAngle:F6}, "
-        + $"responsive {player.responsive}.";
   }
 
   public bool CanRetryHit(scrPlayer player)

@@ -21,13 +21,11 @@ internal interface IGameWorld
   bool IsNextTileAutomatic(scrPlayer player);
   void AdvanceAutomaticTiles();
   bool HasFollowingTile(scrPlayer player);
-  int GetCurrentFloorId(scrPlayer player);
   PerfectTimingInput GetPerfectTimingInput(scrPlayer player, double crotchet);
   void SeekLoadedWorld(double logicalSongPosition, double audioSongPosition);
 
   bool UnlockInputIfNeeded(scrPlayer player);
   bool ValidInputWasTriggered(scrPlayer player);
-  string DescribeInput(scrPlayer player);
   bool CanRetryHit(scrPlayer player);
   bool Hit(scrPlayer player);
   void UpdateInput(scrController controller);

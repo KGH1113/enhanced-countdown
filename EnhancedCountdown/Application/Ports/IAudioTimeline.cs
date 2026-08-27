@@ -16,6 +16,6 @@ internal interface IAudioTimeline
   bool RebaseAtFrozenTime(double frozenSongPosition, double elapsedSinceFirstInput = 0.0);
   void ReleasePrimedSources();
   void RefreezePrimedSources();
-  void Restore(AudioRuntimeSnapshot snapshot, bool unpausePrimedSources, bool logSongSources);
+  void Restore(AudioRuntimeSnapshot snapshot, bool unpausePrimedSources);
   void RebaseAsyncInputClock();
 }
