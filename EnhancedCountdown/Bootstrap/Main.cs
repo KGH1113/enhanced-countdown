@@ -14,6 +14,9 @@ public static class Main
   private static GameObject runtimeHostObject;
   private static UpdateSettings updateSettings;
   private static string updateSettingsPath;
+  private static ModLocale guiLocale;
+  private static GUIStyle localizedLabelStyle;
+  private static GUIStyle localizedToggleStyle;
 
   public static bool Load(UnityModManager.ModEntry entry)
   {
@@ -82,13 +85,37 @@ public static class Main
 
   private static void OnGUI(UnityModManager.ModEntry entry)
   {
-    GUILayout.Label("Updates");
-    bool receiveBetaUpdates = GUILayout.Toggle(updateSettings.ReceiveBetaUpdates, "Receive beta updates");
-    GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
+    ModLocale locale = ModLocalization.CurrentLocale;
+    EnsureLocalizedGuiStyles(locale);
+    GUILayout.Label(ModLocalization.Get(ModText.Updates, locale), localizedLabelStyle);
+    bool receiveBetaUpdates = GUILayout.Toggle(
+      updateSettings.ReceiveBetaUpdates,
+      ModLocalization.Get(ModText.ReceiveBetaUpdates, locale),
+      localizedToggleStyle
+    );
+    GUILayout.Label(ModLocalization.Get(ModText.BetaWarning, locale), localizedLabelStyle);
     if (receiveBetaUpdates == updateSettings.ReceiveBetaUpdates)
       return;
     updateSettings.ReceiveBetaUpdates = receiveBetaUpdates;
     SaveUpdateSettings(entry);
+  }
+
+  private static void EnsureLocalizedGuiStyles(ModLocale locale)
+  {
+    if (localizedLabelStyle != null && localizedToggleStyle != null && guiLocale == locale)
+    {
+      return;
+    }
+
+    guiLocale = locale;
+    localizedLabelStyle = new GUIStyle(GUI.skin.label);
+    localizedToggleStyle = new GUIStyle(GUI.skin.toggle);
+    Font localizedFont = ModLocalization.GetLegacyFont(locale);
+    if (localizedFont != null)
+    {
+      localizedLabelStyle.font = localizedFont;
+      localizedToggleStyle.font = localizedFont;
+    }
   }
 
   private static void OnSaveGUI(UnityModManager.ModEntry entry)
@@ -118,5 +145,7 @@ public static class Main
     }
     harmony?.UnpatchAll(entry.Info.Id);
     harmony = null;
+    localizedLabelStyle = null;
+    localizedToggleStyle = null;
   }
 }

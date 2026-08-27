@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using EnhancedCountdown.Domain.MidRun;
+using EnhancedCountdown.Presentation;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -20,13 +21,16 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   private readonly RectTransform panel;
   private readonly TMP_InputField bpmInput;
   private readonly TMP_Text bpmPlaceholder;
+  private readonly TMP_Text bpmLabel;
   private readonly TMP_Dropdown numeratorDropdown;
   private readonly TMP_Dropdown denominatorDropdown;
   private readonly Toggle enabledToggle;
   private readonly Image toggleTrack;
   private readonly RectTransform toggleKnob;
   private readonly Slider volumeSlider;
+  private readonly TMP_Text volumeLabel;
   private readonly TMP_Text volumeValueText;
+  private readonly TMP_Text timeSignatureLabel;
   private readonly Button muteButton;
   private readonly Image muteButtonImage;
   private readonly Image volumeIcon;
@@ -65,13 +69,16 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     panel = RequireDescendant<RectTransform>(root.transform, "MetronomeControlPanel");
     bpmInput = Require<TMP_InputField>(panel, "BpmInput");
     bpmPlaceholder = bpmInput.placeholder as TMP_Text;
+    bpmLabel = Require<TMP_Text>(panel, "BpmLabel");
     numeratorDropdown = Require<TMP_Dropdown>(panel, "NumeratorDropdown");
     denominatorDropdown = Require<TMP_Dropdown>(panel, "DenominatorDropdown");
     enabledToggle = Require<Toggle>(panel, "EnabledToggle");
     toggleTrack = Require<Image>(enabledToggle.transform, "ToggleTrack");
     toggleKnob = Require<RectTransform>(enabledToggle.transform, "ToggleKnob");
     volumeSlider = Require<Slider>(panel, "VolumeSlider");
+    volumeLabel = Require<TMP_Text>(panel, "VolumeLabel");
     volumeValueText = Require<TMP_Text>(panel, "VolumeValue");
+    timeSignatureLabel = Require<TMP_Text>(panel, "TimeSignatureLabel");
     muteButton = Require<Button>(panel, "MuteButton");
     muteButtonImage = muteButton.GetComponent<Image>();
     volumeIcon = Require<Image>(muteButton.transform, "VolumeIcon");
@@ -89,6 +96,7 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     muteButton.onClick.AddListener(CommitMute);
     enabledToggle.SetIsOnWithoutNotify(true);
     volumeSlider.SetValueWithoutNotify(Math.Clamp(volumePercent, 0, 100));
+    ApplyLocalization();
     RefreshToggle();
     RefreshAudioControls();
     Refresh();
@@ -234,6 +242,20 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   {
     Button button = Require<Button>(panel, buttonName);
     button.onClick.AddListener(() => ApplyMultiplier(multiplier));
+  }
+
+  private void ApplyLocalization()
+  {
+    ModLocale locale = ModLocalization.CurrentLocale;
+    SetLocalizedLabel(bpmLabel, ModText.ClickBpm, locale);
+    SetLocalizedLabel(volumeLabel, ModText.Volume, locale);
+    SetLocalizedLabel(timeSignatureLabel, ModText.TimeSignature, locale);
+  }
+
+  private static void SetLocalizedLabel(TMP_Text label, ModText text, ModLocale locale)
+  {
+    label.text = ModLocalization.Get(text, locale);
+    ModLocalization.ApplyTmpFont(label, locale);
   }
 
   private void ApplyMultiplier(decimal multiplier)
