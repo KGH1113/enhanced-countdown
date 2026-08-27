@@ -43,6 +43,13 @@ internal sealed partial class MidRunCoordinator
   }
 
   internal bool IsFrozen => session?.Phase == FrozenStartPhase.Frozen;
+  internal bool OwnsAudioTimeline =>
+    session?.HasAudioSnapshot == true
+    && session.Phase
+      is FrozenStartPhase.Preparing
+        or FrozenStartPhase.Warming
+        or FrozenStartPhase.Frozen
+        or FrozenStartPhase.Releasing;
   private bool IsWarming => session?.Phase == FrozenStartPhase.Warming;
 
   internal void OnStartRewind(scrController controller, int requestedFloor)
