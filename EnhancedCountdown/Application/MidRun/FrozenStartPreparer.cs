@@ -27,6 +27,7 @@ internal sealed class FrozenStartPreparer
   internal bool Prepare(FrozenStartSession session)
   {
     session.Phase = FrozenStartPhase.Preparing;
+    visuals.ClearHitTexts();
     session.AudioSnapshot = audioTimeline.CaptureAndFreeze();
     session.HasAudioSnapshot = true;
     session.FrozenSongPosition = session.AudioSnapshot.SongPosition;

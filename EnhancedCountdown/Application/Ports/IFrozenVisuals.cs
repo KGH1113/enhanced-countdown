@@ -4,6 +4,7 @@ namespace EnhancedCountdown.Application.Ports;
 
 internal interface IFrozenVisuals
 {
+  void ClearHitTexts();
   void HideStartUi(scrController controller);
   void ScrubToTime(double logicalSongPosition);
   FrozenVisualWarmupSample CaptureWarmupSample();

@@ -10,10 +10,38 @@ namespace EnhancedCountdown.Infrastructure.Unity;
 internal sealed class UnityFrozenVisuals : IFrozenVisuals
 {
   private const float FrozenVisualLeadRadians = 0.017453292f;
+  private static readonly System.Reflection.FieldInfo HitTextDeadField = typeof(scrHitTextMesh).GetField("dead");
+  private static readonly System.Reflection.FieldInfo HitTextTextField = typeof(scrHitTextMesh).GetField("text");
   private readonly Dictionary<scrPlayer, FrozenOrbitState> frozenOrbits = new();
   private scrVfxPlus frozenVfx;
   private double orbitStartedRealtime;
   private bool preparedEffectsResumed;
+
+  public void ClearHitTexts()
+  {
+    GameObject hitTextContainer = ADOBase.playerManager?.hitTextManager?.hitTextContainer;
+    if (hitTextContainer == null)
+    {
+      return;
+    }
+
+    foreach (Component hitText in hitTextContainer.GetComponentsInChildren(typeof(scrHitTextMesh), includeInactive: true))
+    {
+      if (hitText == null)
+      {
+        continue;
+      }
+
+      DOTween.Kill(hitText.transform);
+      object hitTextText = HitTextTextField?.GetValue(hitText);
+      if (hitTextText != null)
+      {
+        DOTween.Kill(hitTextText);
+      }
+      HitTextDeadField?.SetValue(hitText, true);
+      hitText.gameObject.SetActive(false);
+    }
+  }
 
   public void HideStartUi(scrController controller)
   {
