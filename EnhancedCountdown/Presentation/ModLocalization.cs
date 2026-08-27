@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
@@ -56,7 +57,7 @@ internal static class ModLocalization
     return language.HasValue ? RDString.GetFontDataForLanguage(language.Value).font : null;
   }
 
-  internal static void ApplyTmpFont(TMP_Text text, ModLocale locale)
+  internal static void ApplyTmpFontFallback(TMP_Text text, ModLocale locale)
   {
     SystemLanguage? language = GetCjkSystemLanguage(locale);
     if (text == null || !language.HasValue)
@@ -65,10 +66,22 @@ internal static class ModLocalization
     }
 
     FontData fontData = RDString.GetFontDataForLanguage(language.Value);
-    if (fontData.fontTMP != null)
+    TMP_FontAsset baseFont = text.font;
+    TMP_FontAsset localizedFont = fontData.fontTMP;
+    if (baseFont == null || localizedFont == null || baseFont == localizedFont)
     {
-      text.font = fontData.fontTMP;
-      text.lineSpacing *= fontData.lineSpacingTMP;
+      return;
+    }
+
+    List<TMP_FontAsset> fallbackFonts = baseFont.fallbackFontAssetTable;
+    if (fallbackFonts == null)
+    {
+      fallbackFonts = new List<TMP_FontAsset>();
+      baseFont.fallbackFontAssetTable = fallbackFonts;
+    }
+    if (!fallbackFonts.Contains(localizedFont))
+    {
+      fallbackFonts.Add(localizedFont);
     }
   }
 

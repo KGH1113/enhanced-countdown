@@ -255,7 +255,7 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   private static void SetLocalizedLabel(TMP_Text label, ModText text, ModLocale locale)
   {
     label.text = ModLocalization.Get(text, locale);
-    ModLocalization.ApplyTmpFont(label, locale);
+    ModLocalization.ApplyTmpFontFallback(label, locale);
   }
 
   private void ApplyMultiplier(decimal multiplier)
