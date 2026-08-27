@@ -73,10 +73,59 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
         travelRadians = FrozenVisualLeadRadians;
       }
 
-      var orbit = new FrozenOrbitState(chosenPlanet, chosenPlanet.cosmeticAngle, direction, travelRadians, duration);
+      ParticleTimingState[] particleTimings = EnableUnscaledParticleTime(player);
+      var orbit = new FrozenOrbitState(
+        chosenPlanet,
+        chosenPlanet.cosmeticAngle,
+        direction,
+        travelRadians,
+        duration,
+        particleTimings
+      );
       frozenOrbits[player] = orbit;
       ApplyOrbitAngle(orbit, phase: 0.0);
     }
+  }
+
+  private static ParticleTimingState[] EnableUnscaledParticleTime(scrPlayer player)
+  {
+    List<scrPlanet> planets = player?.planetarySystem?.planetList;
+    if (planets == null)
+    {
+      return Array.Empty<ParticleTimingState>();
+    }
+
+    var seen = new HashSet<ParticleSystem>();
+    var timings = new List<ParticleTimingState>(planets.Count * 3);
+    foreach (scrPlanet planet in planets)
+    {
+      PlanetRenderer renderer = planet?.planetRenderer;
+      if (renderer == null)
+      {
+        continue;
+      }
+
+      EnableUnscaledParticleTime(renderer.tailParticles, seen, timings);
+      EnableUnscaledParticleTime(renderer.coreParticles, seen, timings);
+      EnableUnscaledParticleTime(renderer.sparks, seen, timings);
+    }
+    return timings.ToArray();
+  }
+
+  private static void EnableUnscaledParticleTime(
+    ParticleSystem particleSystem,
+    HashSet<ParticleSystem> seen,
+    List<ParticleTimingState> timings
+  )
+  {
+    if (particleSystem == null || !seen.Add(particleSystem))
+    {
+      return;
+    }
+
+    ParticleSystem.MainModule main = particleSystem.main;
+    timings.Add(new ParticleTimingState(particleSystem, main.useUnscaledTime));
+    main.useUnscaledTime = true;
   }
 
   private static void NormalizeOrbitRadius(scrPlayer player)
@@ -239,6 +288,11 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
 
   private static void RestoreOrbit(FrozenOrbitState orbit)
   {
+    foreach (ParticleTimingState timing in orbit.ParticleTimings)
+    {
+      timing.Restore();
+    }
+
     if (orbit.ChosenPlanet == null)
     {
       return;
@@ -270,7 +324,8 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
       float originalAngle,
       float direction,
       double travelRadians,
-      double duration
+      double duration,
+      ParticleTimingState[] particleTimings
     )
     {
       ChosenPlanet = chosenPlanet;
@@ -278,6 +333,7 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
       Direction = direction;
       TravelRadians = travelRadians;
       Duration = duration;
+      ParticleTimings = particleTimings;
     }
 
     internal scrPlanet ChosenPlanet { get; }
@@ -285,5 +341,29 @@ internal sealed class UnityFrozenVisuals : IFrozenVisuals
     internal float Direction { get; }
     internal double TravelRadians { get; }
     internal double Duration { get; }
+    internal ParticleTimingState[] ParticleTimings { get; }
+  }
+
+  private readonly struct ParticleTimingState
+  {
+    internal ParticleTimingState(ParticleSystem particleSystem, bool useUnscaledTime)
+    {
+      ParticleSystem = particleSystem;
+      UseUnscaledTime = useUnscaledTime;
+    }
+
+    private ParticleSystem ParticleSystem { get; }
+    private bool UseUnscaledTime { get; }
+
+    internal void Restore()
+    {
+      if (ParticleSystem == null)
+      {
+        return;
+      }
+
+      ParticleSystem.MainModule main = ParticleSystem.main;
+      main.useUnscaledTime = UseUnscaledTime;
+    }
   }
 }
