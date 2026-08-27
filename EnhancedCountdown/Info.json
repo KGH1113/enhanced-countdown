@@ -2,7 +2,7 @@
   "Id": "EnhancedCountdown",
   "DisplayName": "Enhanced Countdown",
   "Author": "KGH1113",
-  "Version": "0.2.0",
+  "Version": "0.2.1",
   "AssemblyName": "EnhancedCountdown.Bootstrap.dll",
   "EntryMethod": "EnhancedCountdown.Launcher.Bootstrap.Load"
 }
