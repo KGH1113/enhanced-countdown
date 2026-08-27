@@ -66,3 +66,15 @@ then publishes it. Versions containing a SemVer prerelease suffix are marked as 
 stable releases. A failed verification leaves the release as a draft.
 
 There is no start prompt or forced judgment override. Automatic tiles are prepared before the frozen manual input.
+
+## License and contributions
+
+Enhanced Countdown is source-available proprietary software. Official unmodified releases may be used personally
+and non-commercially. Forking and modification are permitted only to prepare a contribution to the official
+repository; other use, redistribution, derivative works, and commercial use require prior written permission from
+the Project Owner. See [`LICENSE.md`](LICENSE.md).
+
+Contributions are welcome and are accepted under the copyright assignment terms in
+[`CONTRIBUTOR_AGREEMENT.md`](CONTRIBUTOR_AGREEMENT.md). See [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a
+pull request. Third-party components remain subject to their own terms as listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

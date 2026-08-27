@@ -13,6 +13,8 @@ runtime="$ENHANCED_COUNTDOWN_PACKAGE_STAGE/Runtime/versions/$version"
 
 require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/Info.json"
 require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/EnhancedCountdown.Bootstrap.dll"
+require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/LICENSE.md"
+require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/THIRD_PARTY_NOTICES.md"
 require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/UpdateSettings.json"
 require_file "$ENHANCED_COUNTDOWN_PACKAGE_STAGE/Runtime/state.json"
 require_file "$runtime/Info.json"
