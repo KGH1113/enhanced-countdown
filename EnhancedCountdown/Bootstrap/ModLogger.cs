@@ -20,6 +20,6 @@ internal sealed class ModLogger : IModLogger
 
   public void LogError(string context, Exception exception)
   {
-    entry.Logger.Error($"[{context}] {exception}");
+    entry.Logger.Error(string.Concat("[", context, "] ", exception));
   }
 }

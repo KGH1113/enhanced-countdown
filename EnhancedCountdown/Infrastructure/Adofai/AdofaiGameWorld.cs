@@ -95,7 +95,7 @@ internal sealed class AdofaiGameWorld : IGameWorld
           if (!player.Hit(isAuto: true))
           {
             throw new InvalidOperationException(
-              $"Could not advance automatic tile {player.currFloor.nextfloor.seqID}."
+              string.Concat("Could not advance automatic tile ", player.currFloor.nextfloor.seqID, ".")
             );
           }
         }

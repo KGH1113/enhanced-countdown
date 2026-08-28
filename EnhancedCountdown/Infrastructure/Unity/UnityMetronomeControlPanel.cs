@@ -156,7 +156,7 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     AssetBundle bundle = AssetBundle.LoadFromFile(path);
     if (bundle == null)
     {
-      throw new InvalidOperationException($"Failed to load the metronome control panel AssetBundle: {path}");
+      throw new InvalidOperationException(string.Concat("Failed to load the metronome control panel AssetBundle: ", path));
     }
 
     GameObject root = null;
@@ -381,7 +381,7 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   private void RefreshAudioControls()
   {
     int volumePercent = Mathf.RoundToInt(volumeSlider.value);
-    volumeValueText.text = $"{volumePercent}%";
+    volumeValueText.text = string.Concat(volumePercent, "%");
     if (muteButtonImage != null)
     {
       muteButtonImage.color = isMuted ? new Color32(68, 191, 255, 255) : new Color32(24, 26, 33, 245);
@@ -411,7 +411,9 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     Transform descendant = FindDescendant(parent, name);
     if (descendant == null || !descendant.TryGetComponent(out T component))
     {
-      throw new InvalidOperationException($"Required UI component '{name}' ({typeof(T).Name}) was not found.");
+      throw new InvalidOperationException(
+        string.Concat("Required UI component '", name, "' (", typeof(T).Name, ") was not found.")
+      );
     }
     return component;
   }
@@ -427,7 +429,9 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
         return component;
       }
     }
-    throw new InvalidOperationException($"Required child UI component '{name}' ({typeof(T).Name}) was not found.");
+    throw new InvalidOperationException(
+      string.Concat("Required child UI component '", name, "' (", typeof(T).Name, ") was not found.")
+    );
   }
 
   private static Transform FindDescendant(Transform parent, string name)
@@ -454,7 +458,9 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
       RuntimePlatform.OSXPlayer or RuntimePlatform.OSXEditor => "mac",
       RuntimePlatform.WindowsPlayer or RuntimePlatform.WindowsEditor => "win",
       RuntimePlatform.LinuxPlayer or RuntimePlatform.LinuxEditor => "linux",
-      _ => throw new PlatformNotSupportedException($"Unsupported platform: {UnityEngine.Application.platform}"),
+      _ => throw new PlatformNotSupportedException(
+        string.Concat("Unsupported platform: ", UnityEngine.Application.platform)
+      ),
     };
   }
 

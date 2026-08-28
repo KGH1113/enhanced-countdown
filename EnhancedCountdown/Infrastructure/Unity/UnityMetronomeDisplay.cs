@@ -148,7 +148,7 @@ internal sealed class UnityMetronomeDisplay
     using Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(IconResourceName);
     if (stream == null)
     {
-      throw new InvalidOperationException($"Embedded resource '{IconResourceName}' was not found.");
+      throw new InvalidOperationException(string.Concat("Embedded resource '", IconResourceName, "' was not found."));
     }
 
     using var buffer = new MemoryStream();
