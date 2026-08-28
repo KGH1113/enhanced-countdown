@@ -31,7 +31,15 @@ internal readonly struct MetronomeSettings : IEquatable<MetronomeSettings>
 
   public override bool Equals(object obj) => obj is MetronomeSettings other && Equals(other);
 
-  public override int GetHashCode() => HashCode.Combine(ClickBpm, Numerator, Denominator);
+  public override int GetHashCode()
+  {
+    unchecked
+    {
+      int hashCode = ClickBpm.GetHashCode();
+      hashCode = (hashCode * 397) ^ Numerator;
+      return (hashCode * 397) ^ Denominator;
+    }
+  }
 
   public static bool operator ==(MetronomeSettings left, MetronomeSettings right) => left.Equals(right);
 

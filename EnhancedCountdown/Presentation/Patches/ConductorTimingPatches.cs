@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using EnhancedCountdown.Bootstrap;
 using HarmonyLib;
@@ -7,24 +8,42 @@ namespace EnhancedCountdown.Presentation.Patches;
 [HarmonyPatch(typeof(scrConductor), "DesyncFix")]
 internal static class ConductorDesyncFixPatch
 {
-  [HarmonyPrefix]
-  [HarmonyPriority(Priority.First)]
-  private static bool Prefix(scrConductor __instance, ref IEnumerator __result)
+  [HarmonyPostfix]
+  private static void Postfix(scrConductor __instance, ref IEnumerator __result)
   {
-    if (
-      !object.ReferenceEquals(__instance, ADOBase.conductor)
-      || ModCompositionRoot.Coordinator?.OwnsAudioTimeline != true
-    )
+    if (__result == null || !object.ReferenceEquals(__instance, ADOBase.conductor))
     {
-      return true;
+      return;
     }
 
-    __result = EmptyCoroutine();
-    return false;
+    __result = GuardExecution(__instance, __result);
   }
 
-  private static IEnumerator EmptyCoroutine()
+  private static IEnumerator GuardExecution(scrConductor conductor, IEnumerator original)
   {
-    yield break;
+    try
+    {
+      while (true)
+      {
+        if (
+          object.ReferenceEquals(conductor, ADOBase.conductor)
+          && ModCompositionRoot.Coordinator?.OwnsAudioTimeline == true
+        )
+        {
+          yield break;
+        }
+
+        if (!original.MoveNext())
+        {
+          yield break;
+        }
+
+        yield return original.Current;
+      }
+    }
+    finally
+    {
+      (original as IDisposable)?.Dispose();
+    }
   }
 }
