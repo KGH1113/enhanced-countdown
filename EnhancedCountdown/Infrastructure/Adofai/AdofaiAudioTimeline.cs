@@ -1,6 +1,7 @@
 using System;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
+using EnhancedCountdown.Infrastructure.Compatibility;
 using UnityEngine;
 
 namespace EnhancedCountdown.Infrastructure.Adofai;
@@ -125,17 +126,15 @@ internal sealed class AdofaiAudioTimeline : IAudioTimeline
     }
 
     scrConductor activeConductor = ADOBase.conductor;
-    ulong wallTickBefore = (ulong)DateTime.Now.Ticks;
+    long wallTickBefore = DateTime.Now.Ticks;
     double currentDspTime = AudioSettings.dspTime;
-    ulong wallTickAfter = (ulong)DateTime.Now.Ticks;
-    ulong nowTick = wallTickBefore + (wallTickAfter - wallTickBefore) / 2UL;
-    ulong currentDspTick = (ulong)Math.Max(0.0, currentDspTime * TimeSpan.TicksPerSecond);
-    ulong newOffsetTick = nowTick >= currentDspTick ? nowTick - currentDspTick : 0UL;
+    long wallTickAfter = DateTime.Now.Ticks;
+    long nowTick = wallTickBefore + (wallTickAfter - wallTickBefore) / 2L;
+    long currentDspTick = (long)Math.Max(0.0, currentDspTime * TimeSpan.TicksPerSecond);
+    long newOffsetTick = nowTick >= currentDspTick ? nowTick - currentDspTick : 0L;
 
-    AsyncInputManager.prevFrameTick = nowTick;
-    AsyncInputManager.currFrameTick = nowTick;
+    AdofaiRuntimeApi.SetAsyncInputClock(nowTick, newOffsetTick);
     AsyncInputManager.previousFrameTime = Time.unscaledTimeAsDouble;
-    AsyncInputManager.offsetTick = newOffsetTick;
     AsyncInputManager.offsetTickUpdated = true;
 
     if (activeConductor == null || activeConductor.song == null || activeConductor.song.pitch == 0f)

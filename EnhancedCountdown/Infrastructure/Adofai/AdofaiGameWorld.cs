@@ -92,7 +92,7 @@ internal sealed class AdofaiGameWorld : IGameWorld
         if (player?.currFloor?.nextfloor != null && player.currFloor.nextfloor.auto)
         {
           player.keyTimes.Clear();
-          if (!player.Hit(isAuto: true))
+          if (!AdofaiRuntimeApi.Hit(player, isAuto: true))
           {
             throw new InvalidOperationException(
               string.Concat("Could not advance automatic tile ", player.currFloor.nextfloor.seqID, ".")
@@ -178,7 +178,7 @@ internal sealed class AdofaiGameWorld : IGameWorld
 
   public bool Hit(scrPlayer player)
   {
-    return player.Hit(isAuto: false);
+    return AdofaiRuntimeApi.Hit(player, isAuto: false);
   }
 
   public void UpdateInput(scrController controller)

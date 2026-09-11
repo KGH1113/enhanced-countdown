@@ -1,15 +1,28 @@
-using HarmonyLib;
+using System.Reflection;
 using EnhancedCountdown.Bootstrap;
+using EnhancedCountdown.Infrastructure.Compatibility;
+using HarmonyLib;
 
 namespace EnhancedCountdown.Presentation.Patches;
 
-[HarmonyPatch(typeof(scrPlayer), nameof(scrPlayer.Simulated_PlayerControl_Update))]
+[HarmonyPatch]
 internal static class FrozenPlayerUpdatePatch
 {
-  [HarmonyPrefix]
-  private static bool Prefix(scrPlayer __instance, ref ulong? targetTick)
+  private static MethodBase TargetMethod()
   {
-    return ModCompositionRoot.Coordinator?.PreparePlayerUpdate(__instance, ref targetTick) ?? true;
+    return AdofaiRuntimeApi.PlayerUpdateMethod;
+  }
+
+  [HarmonyPrefix]
+  private static bool Prefix(scrPlayer __instance, object[] __args)
+  {
+    bool clearTargetTick = false;
+    bool runOriginal = ModCompositionRoot.Coordinator?.PreparePlayerUpdate(__instance, out clearTargetTick) ?? true;
+    if (clearTargetTick && __args.Length > 0)
+    {
+      __args[0] = null;
+    }
+    return runOriginal;
   }
 
   [HarmonyPostfix]
@@ -19,9 +32,14 @@ internal static class FrozenPlayerUpdatePatch
   }
 }
 
-[HarmonyPatch(typeof(scrPlayer), nameof(scrPlayer.Hit))]
+[HarmonyPatch]
 internal static class FirstManualHitPatch
 {
+  private static MethodBase TargetMethod()
+  {
+    return AdofaiRuntimeApi.PlayerHitMethod;
+  }
+
   [HarmonyPrefix]
   private static void Prefix(scrPlayer __instance, bool isAuto)
   {

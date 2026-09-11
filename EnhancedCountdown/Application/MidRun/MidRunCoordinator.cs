@@ -116,8 +116,9 @@ internal sealed partial class MidRunCoordinator
     }
   }
 
-  internal bool PreparePlayerUpdate(scrPlayer player, ref ulong? targetTick)
+  internal bool PreparePlayerUpdate(scrPlayer player, out bool clearTargetTick)
   {
+    clearTargetTick = false;
     if (IsWarming)
     {
       return false;
@@ -146,7 +147,7 @@ internal sealed partial class MidRunCoordinator
     }
 
     metronome.Stop("first input accepted");
-    targetTick = null;
+    clearTargetTick = true;
     session.PendingInputPlayer = player;
     runtimeRestorer.ReleaseAudioForInput(session);
     return true;
