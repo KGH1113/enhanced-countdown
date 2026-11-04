@@ -6,6 +6,8 @@ namespace EnhancedCountdown.Infrastructure.Compatibility;
 
 internal static class AdofaiRuntimeApi
 {
+  private const double MaximumTrustedInputAgeSeconds = 0.25;
+
   private static readonly MethodInfo SignedTickPlayerUpdateMethod = AccessTools.Method(
     typeof(scrPlayer),
     nameof(scrPlayer.Simulated_PlayerControl_Update),
@@ -53,6 +55,31 @@ internal static class AdofaiRuntimeApi
     return (bool)method.Invoke(player, arguments);
   }
 
+  internal static double GetSecondsSinceInputTick(object inputTick)
+  {
+    // Async key events carry DateTime.Now ticks. Events without their own tick reuse the frame tick, which
+    // stops advancing while the conductor is frozen; that and implausibly old ticks are ignored.
+    long tick;
+    switch (inputTick)
+    {
+      case long signedTick:
+        tick = signedTick;
+        break;
+      case ulong unsignedTick when unsignedTick <= long.MaxValue:
+        tick = (long)unsignedTick;
+        break;
+      default:
+        return 0.0;
+    }
+    if (tick <= 0L || tick <= ReadTick(CurrentFrameTickField))
+    {
+      return 0.0;
+    }
+
+    double seconds = (double)(DateTime.Now.Ticks - tick) / TimeSpan.TicksPerSecond;
+    return seconds >= 0.0 && seconds <= MaximumTrustedInputAgeSeconds ? seconds : 0.0;
+  }
+
   internal static void SetAsyncInputClock(long nowTick, long offsetTick)
   {
     SetTick(PreviousFrameTickField, nowTick);
@@ -68,6 +95,16 @@ internal static class AdofaiRuntimeApi
       throw new MissingFieldException(typeof(AsyncInputManager).FullName, name);
     }
     return field;
+  }
+
+  private static long ReadTick(FieldInfo field)
+  {
+    return field.GetValue(null) switch
+    {
+      long signedTick => signedTick,
+      ulong unsignedTick when unsignedTick <= long.MaxValue => (long)unsignedTick,
+      _ => long.MaxValue,
+    };
   }
 
   private static void SetTick(FieldInfo field, long value)

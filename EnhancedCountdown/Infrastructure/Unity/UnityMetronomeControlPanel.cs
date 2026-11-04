@@ -16,7 +16,11 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
 {
   private const string BundleName = "enhancedcountdown_ui.bundle";
   private const string PrefabSuffix = "/metronomecontrolpanel.prefab";
-  private readonly AssetBundle bundle;
+
+  // Loading the bundle, prefab, and TMP font on every frozen start is costly, so they are kept for the
+  // lifetime of the mod and only the panel instance is created per start.
+  private static AssetBundle cachedBundle;
+  private static GameObject cachedPrefab;
   private readonly GameObject root;
   private readonly RectTransform panel;
   private readonly TMP_InputField bpmInput;
@@ -45,7 +49,6 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
   private int suppressInputThroughFrame = -1;
 
   private UnityMetronomeControlPanel(
-    AssetBundle bundle,
     GameObject root,
     MetronomeSettings settings,
     double placeholderBpm,
@@ -57,7 +60,6 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     Action disableRequested
   )
   {
-    this.bundle = bundle;
     this.root = root;
     this.settings = settings;
     this.placeholderBpm = placeholderBpm;
@@ -124,7 +126,11 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
       Canvas canvas = root.GetComponent<Canvas>();
       Camera eventCamera =
         canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
-      bool pointerOverPanel = RectTransformUtility.RectangleContainsScreenPoint(panel, Input.mousePosition, eventCamera);
+      bool pointerOverPanel = RectTransformUtility.RectangleContainsScreenPoint(
+        panel,
+        Input.mousePosition,
+        eventCamera
+      );
       bool pointerPressed = Input.GetMouseButton(0) || Input.GetMouseButtonDown(0) || Input.GetMouseButtonUp(0);
       if (pointerOverPanel && pointerPressed)
       {
@@ -147,35 +153,14 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
     Action disableRequested
   )
   {
-    string path = Path.Combine(RuntimeDirectory(), "Assets", PlatformFolder(), BundleName);
-    if (!File.Exists(path))
-    {
-      throw new FileNotFoundException("The metronome control panel AssetBundle was not found.", path);
-    }
-
-    AssetBundle bundle = AssetBundle.LoadFromFile(path);
-    if (bundle == null)
-    {
-      throw new InvalidOperationException(string.Concat("Failed to load the metronome control panel AssetBundle: ", path));
-    }
-
+    GameObject prefab = GetPrefab();
     GameObject root = null;
     try
     {
-      string prefabName = bundle
-        .GetAllAssetNames()
-        .FirstOrDefault(name => name.EndsWith(PrefabSuffix, StringComparison.OrdinalIgnoreCase));
-      GameObject prefab = string.IsNullOrEmpty(prefabName) ? null : bundle.LoadAsset<GameObject>(prefabName);
-      if (prefab == null)
-      {
-        throw new InvalidOperationException("MetronomeControlPanel prefab was not found in the UI AssetBundle.");
-      }
-
       root = UnityEngine.Object.Instantiate(prefab);
       root.name = "EnhancedCountdown Metronome Control Panel";
       UnityEngine.Object.DontDestroyOnLoad(root);
       return new UnityMetronomeControlPanel(
-        bundle,
         root,
         settings,
         placeholderBpm,
@@ -193,9 +178,70 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
       {
         UnityEngine.Object.Destroy(root);
       }
-      bundle.Unload(true);
       throw;
     }
+  }
+
+  internal static void ReleaseCachedAssets()
+  {
+    cachedPrefab = null;
+    if (cachedBundle != null)
+    {
+      cachedBundle.Unload(true);
+    }
+    cachedBundle = null;
+  }
+
+  private static GameObject GetPrefab()
+  {
+    if (cachedPrefab != null)
+    {
+      return cachedPrefab;
+    }
+
+    if (cachedBundle == null)
+    {
+      cachedBundle = FindLoadedBundle() ?? LoadBundle();
+    }
+    string prefabName = cachedBundle
+      .GetAllAssetNames()
+      .FirstOrDefault(name => name.EndsWith(PrefabSuffix, StringComparison.OrdinalIgnoreCase));
+    GameObject prefab = string.IsNullOrEmpty(prefabName) ? null : cachedBundle.LoadAsset<GameObject>(prefabName);
+    if (prefab == null)
+    {
+      ReleaseCachedAssets();
+      throw new InvalidOperationException("MetronomeControlPanel prefab was not found in the UI AssetBundle.");
+    }
+    cachedPrefab = prefab;
+    return cachedPrefab;
+  }
+
+  private static AssetBundle FindLoadedBundle()
+  {
+    // A reloaded mod assembly loses its static cache while Unity keeps the bundle loaded.
+    return AssetBundle
+      .GetAllLoadedAssetBundles()
+      .FirstOrDefault(loaded =>
+        loaded != null && string.Equals(loaded.name, BundleName, StringComparison.OrdinalIgnoreCase)
+      );
+  }
+
+  private static AssetBundle LoadBundle()
+  {
+    string path = Path.Combine(RuntimeDirectory(), "Assets", PlatformFolder(), BundleName);
+    if (!File.Exists(path))
+    {
+      throw new FileNotFoundException("The metronome control panel AssetBundle was not found.", path);
+    }
+
+    AssetBundle bundle = AssetBundle.LoadFromFile(path);
+    if (bundle == null)
+    {
+      throw new InvalidOperationException(
+        string.Concat("Failed to load the metronome control panel AssetBundle: ", path)
+      );
+    }
+    return bundle;
   }
 
   internal void SetSettings(MetronomeSettings value)
@@ -235,7 +281,6 @@ internal sealed class UnityMetronomeControlPanel : IDisposable
       root.SetActive(false);
       UnityEngine.Object.Destroy(root);
     }
-    bundle?.Unload(false);
   }
 
   private void BindMultiplier(string buttonName, decimal multiplier)

@@ -23,60 +23,51 @@ internal sealed class FrozenRuntimeRestorer
     this.logger = logger;
   }
 
-  internal void ReleaseAudioForInput(FrozenStartSession session)
+  internal void BeginPlaybackForInput(FrozenStartSession session, double elapsedSinceInput)
   {
-    if (session.AudioReleasedForInput || session.AudioSnapshot.ListenerPaused || !audioTimeline.IsAvailable)
+    if (session.PlaybackStartedForInput || !audioTimeline.IsAvailable)
+    {
+      return;
+    }
+    if (!audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition, elapsedSinceInput))
     {
       return;
     }
 
-    audioTimeline.ReleasePrimedSources();
-    session.AudioReleasedForInput = true;
-  }
-
-  internal void RebaseTimelineForInput(FrozenStartSession session)
-  {
-    if (session.TimelineRebasedForInput || !audioTimeline.IsAvailable)
+    // The song is scheduled before the hit-sound schedule is rebuilt so its start never slips.
+    if (!session.AudioSnapshot.ListenerPaused)
     {
-      return;
+      audioTimeline.StartPrimedSources();
     }
-
-    if (audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition))
-    {
-      hitSounds.Activate();
-      session.TimelineRebasedForInput = true;
-    }
+    hitSounds.Activate(audioTimeline.EarliestPlaybackDspTime);
+    session.PlaybackStartedForInput = true;
   }
 
   internal void RefreezeAfterRejectedInput(FrozenStartSession session)
   {
-    if (!session.AudioReleasedForInput)
+    if (!session.PlaybackStartedForInput)
     {
       return;
     }
 
     audioTimeline.RefreezePrimedSources();
-    if (session.TimelineRebasedForInput)
-    {
-      hitSounds.Refreeze();
-      audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition);
-    }
+    hitSounds.Refreeze();
+    audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition);
     visuals.RefreezePreparedEffects();
-    session.AudioReleasedForInput = false;
-    session.TimelineRebasedForInput = false;
+    session.PlaybackStartedForInput = false;
   }
 
   internal void Restore(FrozenStartSession session, bool restartAudio)
   {
-    bool unpausePrimedSources = false;
+    bool startPrimedSources = false;
     try
     {
       visuals.RestoreAll();
-      if (session.HasAudioSnapshot && audioTimeline.IsAvailable && restartAudio && !session.AudioReleasedForInput)
+      if (session.HasAudioSnapshot && audioTimeline.IsAvailable && restartAudio && !session.PlaybackStartedForInput)
       {
         audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition);
         hitSounds.Reset();
-        unpausePrimedSources = !session.AudioSnapshot.ListenerPaused;
+        startPrimedSources = !session.AudioSnapshot.ListenerPaused;
       }
     }
     catch (Exception exception)
@@ -87,7 +78,7 @@ internal sealed class FrozenRuntimeRestorer
     {
       if (session.HasAudioSnapshot)
       {
-        audioTimeline.Restore(session.AudioSnapshot, unpausePrimedSources);
+        audioTimeline.Restore(session.AudioSnapshot, startPrimedSources);
       }
     }
   }

@@ -14,8 +14,8 @@ internal static class ModCompositionRoot
     Shutdown();
     var logger = new ModLogger(entry);
     var gameWorld = new AdofaiGameWorld();
-    var audioTimeline = new AdofaiAudioTimeline();
-    var hitSounds = new AdofaiHitSoundScheduler(new ConductorHitSoundAccessor(), logger);
+    var audioTimeline = new AdofaiAudioTimeline(logger);
+    var hitSounds = new AdofaiHitSoundScheduler(logger);
     var metronome = new UnityFrozenMetronome(logger, entry.Path);
     var visuals = new UnityFrozenVisuals();
     var startPreparer = new FrozenStartPreparer(gameWorld, audioTimeline, hitSounds, visuals);
@@ -36,5 +36,7 @@ internal static class ModCompositionRoot
   {
     Coordinator?.Shutdown();
     Coordinator = null;
+    UnityMetronomeControlPanel.ReleaseCachedAssets();
+    UnityMetronomeDisplay.ReleaseCachedAssets();
   }
 }

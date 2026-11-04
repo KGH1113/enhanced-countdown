@@ -25,12 +25,16 @@ internal sealed class UnityFrozenMetronome : IMetronome
   private AudioClip pendingLoopClip;
   private MetronomePlayback playback;
   private MetronomePlayback pendingPlayback;
+  private MetronomePlayback previousPlayback;
+  private int previousNumerator;
   private MetronomeSettings sessionSettings;
   private MetronomeSettings activeSettings;
   private MetronomeSettings pendingSettings;
   private double sessionDefaultClickBpm;
   private bool hasPlayback;
   private bool hasPendingPlayback;
+  private bool hasPreviousPlayback;
+  private double activeSourceStartDspTime;
   private bool hasSessionSettings;
   private bool isEnabledForSession = true;
   private bool disableRequested;
@@ -57,7 +61,7 @@ internal sealed class UnityFrozenMetronome : IMetronome
     return true;
   }
 
-  public MetronomePlayback? Start()
+  public MetronomePlayback? Start(bool continuePreviousGrid = false)
   {
     Stop();
     if (!isEnabledForSession)
@@ -96,18 +100,40 @@ internal sealed class UnityFrozenMetronome : IMetronome
       sourceBaseVolume = conductor.hitSoundVolume;
       metronomeSource = CreateSource(metronomeLoopClip, conductor);
       double clickInterval = (double)loopFrames / hatClip.frequency;
-      double dspStartTime = AudioSettings.dspTime + SchedulingLeadSeconds;
-      double startedRealtime = Time.realtimeSinceStartupAsDouble;
+      double dspNow = AudioSettings.dspTime;
+      double earliestStart = dspNow + SchedulingLeadSeconds;
+      double gridStartTime = earliestStart;
+      double dspStartTime = earliestStart;
+      int startBeat = 0;
+      if (
+        continuePreviousGrid
+        && hasPreviousPlayback
+        && previousPlayback.ClickFrames == loopFrames
+        && previousNumerator == settings.Numerator
+      )
+      {
+        // Restart on the click grid the player was already following instead of beat one of a new grid.
+        gridStartTime = previousPlayback.DspStartTime;
+        dspStartTime = NextSafeTickTime(previousPlayback, earliestStart);
+        long elapsedClicks = (long)Math.Round((dspStartTime - gridStartTime) / clickInterval);
+        startBeat = (int)(elapsedClicks % settings.Numerator);
+      }
       metronomeSource.PlayScheduled(dspStartTime);
+      activeSourceStartDspTime = dspStartTime;
+      if (startBeat > 0)
+      {
+        metronomeSource.timeSamples = startBeat * loopFrames;
+      }
       playback = new MetronomePlayback(
         originalBpm,
         settings.ClickBpm,
-        startedRealtime,
-        dspStartTime,
+        RealtimeAt(dspStartTime, dspNow),
+        gridStartTime,
         clickInterval,
         loopFrames
       );
       hasPlayback = true;
+      RememberGrid(playback, settings);
       activeSettings = settings;
       sessionSettings = settings;
       if (!hasSessionSettings)
@@ -157,7 +183,9 @@ internal sealed class UnityFrozenMetronome : IMetronome
     PromotePendingPlaybackIfDue();
     if (metronomeDisplay != null && metronomeSource != null)
     {
-      metronomeDisplay.Update(metronomeSource.timeSamples, metronomeSource.isPlaying);
+      // A scheduled source reports isPlaying before its first click; keep the icon at rest until then.
+      bool sounding = metronomeSource.isPlaying && AudioSettings.dspTime >= activeSourceStartDspTime;
+      metronomeDisplay.Update(metronomeSource.timeSamples, sounding);
     }
   }
 
@@ -169,6 +197,9 @@ internal sealed class UnityFrozenMetronome : IMetronome
     pendingSettings = default;
     sessionDefaultClickBpm = 0.0;
     hasSessionSettings = false;
+    previousPlayback = default;
+    previousNumerator = 0;
+    hasPreviousPlayback = false;
     isEnabledForSession = true;
     disableRequested = false;
   }
@@ -241,12 +272,13 @@ internal sealed class UnityFrozenMetronome : IMetronome
 
       replacementClip = CreateLoopClip(hatClip, TryLoadKickClip(), requested, out int loopFrames);
       replacementSource = CreateSource(replacementClip, metronomeSource);
-      double transitionTime = NextSafeTickTime(playback, AudioSettings.dspTime + SchedulingLeadSeconds);
+      double dspNow = AudioSettings.dspTime;
+      double transitionTime = NextSafeTickTime(playback, dspNow + SchedulingLeadSeconds);
       double clickInterval = (double)loopFrames / hatClip.frequency;
       var replacementPlayback = new MetronomePlayback(
         playback.OriginalBpm,
         requested.ClickBpm,
-        Time.realtimeSinceStartupAsDouble,
+        RealtimeAt(transitionTime, dspNow),
         transitionTime,
         clickInterval,
         loopFrames
@@ -346,7 +378,9 @@ internal sealed class UnityFrozenMetronome : IMetronome
     metronomeSource = pendingSource;
     metronomeLoopClip = pendingLoopClip;
     playback = pendingPlayback;
+    activeSourceStartDspTime = pendingPlayback.DspStartTime;
     activeSettings = pendingSettings;
+    RememberGrid(playback, activeSettings);
     pendingSource = null;
     pendingLoopClip = null;
     pendingPlayback = default;
@@ -473,6 +507,19 @@ internal sealed class UnityFrozenMetronome : IMetronome
     source.outputAudioMixerGroup = mixerGroup;
     source.ignoreListenerPause = true;
     source.clip = clip;
+  }
+
+  private void RememberGrid(MetronomePlayback activePlayback, MetronomeSettings settings)
+  {
+    previousPlayback = activePlayback;
+    previousNumerator = settings.Numerator;
+    hasPreviousPlayback = true;
+  }
+
+  private static double RealtimeAt(double dspTime, double dspNow)
+  {
+    // Visual motion runs on the realtime clock; align its phase with the first scheduled click.
+    return Time.realtimeSinceStartupAsDouble + Math.Max(0.0, dspTime - dspNow);
   }
 
   private static double NextSafeTickTime(MetronomePlayback activePlayback, double earliestTime)

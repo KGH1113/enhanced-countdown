@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
 using EnhancedCountdown.Infrastructure.Compatibility;
@@ -130,28 +129,29 @@ internal sealed class AdofaiGameWorld : IGameWorld
     );
   }
 
+  public int GetNextFloorIndex(scrPlayer player)
+  {
+    return player?.currFloor?.nextfloor?.seqID ?? -1;
+  }
+
   public void SeekLoadedWorld(double logicalSongPosition, double audioSongPosition)
   {
     scrConductor conductor = ADOBase.conductor;
-    if (conductor == null || ADOBase.playerManager == null)
+    if (conductor?.song == null || conductor.song.pitch == 0f || ADOBase.playerManager == null)
     {
-      throw new InvalidOperationException("The conductor or player manager is unavailable.");
+      throw new InvalidOperationException("The conductor, song, or player manager is unavailable.");
     }
 
-    var lastHits = new Dictionary<scrPlayer, double>();
-    foreach (scrPlayer player in ADOBase.playerManager)
-    {
-      lastHits[player] = player.lastHit;
-    }
-
+    // Same clock update as scrConductor.ScrubMusicToTime, without seeking the song or stopping sounds.
+    // Seeking a streamed clip for every automatic tile is slow; the song is primed once at the final position.
     conductor.dspTime = AudioSettings.dspTime;
-    conductor.ScrubMusicToTime(audioSongPosition);
+    conductor.dspTimeSong =
+      conductor.dspTime - (audioSongPosition + conductor.addoffset) / conductor.song.pitch + 0.10000000149011612;
     conductor.songposition_minusi = logicalSongPosition;
 
-    foreach (KeyValuePair<scrPlayer, double> pair in lastHits)
+    foreach (scrPlayer player in ADOBase.playerManager)
     {
-      pair.Key.lastHit = pair.Value;
-      pair.Key.planetarySystem?.chosenPlanet?.Update_RefreshAngles();
+      player.planetarySystem?.chosenPlanet?.Update_RefreshAngles();
     }
   }
 
@@ -169,6 +169,11 @@ internal sealed class AdofaiGameWorld : IGameWorld
   public bool ValidInputWasTriggered(scrPlayer player)
   {
     return player.ValidInputWasTriggered();
+  }
+
+  public double GetSecondsSinceInput(object inputTick)
+  {
+    return AdofaiRuntimeApi.GetSecondsSinceInputTick(inputTick);
   }
 
   public bool CanRetryHit(scrPlayer player)

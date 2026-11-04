@@ -12,10 +12,13 @@ internal sealed class UnityMetronomeDisplay
   private const string IconResourceName = "EnhancedCountdown.Resources.metronome-icon-200.png";
   private const float PulseAmplitude = 0.22f;
   private const double RecoveryIntervalRatio = 0.65;
+
+  // The icon is decoded once and reused by every frozen start.
+  private static Texture2D cachedIconTexture;
+  private static Sprite cachedIconSprite;
   private GameObject root;
   private RectTransform iconTransform;
   private Sprite iconSprite;
-  private Texture2D iconTexture;
   private MetronomePlayback playback;
 
   private UnityMetronomeDisplay() { }
@@ -45,14 +48,7 @@ internal sealed class UnityMetronomeDisplay
     }
 
     this.playback = playback;
-    iconTexture = LoadIconTexture();
-    iconSprite = Sprite.Create(
-      iconTexture,
-      new Rect(0f, 0f, iconTexture.width, iconTexture.height),
-      new Vector2(0.5f, 0.5f),
-      100f
-    );
-    iconSprite.name = "EnhancedCountdown Metronome Icon";
+    iconSprite = GetIconSprite();
 
     root = new GameObject("EnhancedCountdown Metronome UI", typeof(RectTransform), typeof(CanvasGroup));
     root.SetActive(false);
@@ -128,19 +124,44 @@ internal sealed class UnityMetronomeDisplay
       root.SetActive(false);
       UnityEngine.Object.Destroy(root);
     }
-    if (iconSprite != null)
-    {
-      UnityEngine.Object.Destroy(iconSprite);
-    }
-    if (iconTexture != null)
-    {
-      UnityEngine.Object.Destroy(iconTexture);
-    }
-
     root = null;
     iconTransform = null;
     iconSprite = null;
-    iconTexture = null;
+  }
+
+  internal static void ReleaseCachedAssets()
+  {
+    if (cachedIconSprite != null)
+    {
+      UnityEngine.Object.Destroy(cachedIconSprite);
+    }
+    if (cachedIconTexture != null)
+    {
+      UnityEngine.Object.Destroy(cachedIconTexture);
+    }
+    cachedIconSprite = null;
+    cachedIconTexture = null;
+  }
+
+  private static Sprite GetIconSprite()
+  {
+    if (cachedIconSprite != null)
+    {
+      return cachedIconSprite;
+    }
+
+    if (cachedIconTexture == null)
+    {
+      cachedIconTexture = LoadIconTexture();
+    }
+    cachedIconSprite = Sprite.Create(
+      cachedIconTexture,
+      new Rect(0f, 0f, cachedIconTexture.width, cachedIconTexture.height),
+      new Vector2(0.5f, 0.5f),
+      100f
+    );
+    cachedIconSprite.name = "EnhancedCountdown Metronome Icon";
+    return cachedIconSprite;
   }
 
   private static Texture2D LoadIconTexture()

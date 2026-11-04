@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
 
@@ -26,6 +27,8 @@ internal sealed class FrozenStartPreparer
 
   internal bool Prepare(FrozenStartSession session)
   {
+    Stopwatch watch = Stopwatch.StartNew();
+    FrozenStartTimings timings = session.Timings;
     session.Phase = FrozenStartPhase.Preparing;
     visuals.ClearHitTexts();
     session.AudioSnapshot = audioTimeline.CaptureAndFreeze();
@@ -40,13 +43,16 @@ internal sealed class FrozenStartPreparer
       throw new InvalidOperationException("The primary player is unavailable.");
     }
 
+    double phaseStarted = watch.Elapsed.TotalMilliseconds;
     int safetyLimit = gameWorld.AutomaticTileSafetyLimit;
     while (safetyLimit-- > 0 && gameWorld.IsNextTileAutomatic(primary))
     {
       double automaticHitTime = CalculatePerfectSongPosition(primary);
       gameWorld.SeekLoadedWorld(automaticHitTime, automaticHitTime);
       gameWorld.AdvanceAutomaticTiles();
+      timings.AutomaticTiles++;
     }
+    timings.AutomaticTilesMilliseconds = watch.Elapsed.TotalMilliseconds - phaseStarted;
 
     if (safetyLimit <= 0)
     {
@@ -56,20 +62,28 @@ internal sealed class FrozenStartPreparer
     if (!gameWorld.HasFollowingTile(primary))
     {
       session.FrozenSongPosition = audioTimeline.CurrentSongPosition;
+      audioTimeline.PrimeSongSources(CalibratedAudioSongPosition(session.FrozenSongPosition));
       return false;
     }
 
     session.FrozenSongPosition = CalculatePerfectSongPosition(primary);
-    session.FrozenAudioSongPosition = FrozenStartTiming.CalculateCalibratedAudioSongPosition(
-      session.FrozenSongPosition,
-      audioTimeline.Calibration,
-      audioTimeline.Pitch
-    );
+    session.FrozenAudioSongPosition = CalibratedAudioSongPosition(session.FrozenSongPosition);
     gameWorld.SeekLoadedWorld(session.FrozenSongPosition, session.FrozenAudioSongPosition);
+
+    phaseStarted = watch.Elapsed.TotalMilliseconds;
     visuals.ScrubToTime(session.FrozenSongPosition);
-    audioTimeline.PrimeSongSources();
-    audioTimeline.PauseListener();
-    if (!audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition) || !hitSounds.Prepare())
+    timings.VisualScrubMilliseconds = watch.Elapsed.TotalMilliseconds - phaseStarted;
+
+    phaseStarted = watch.Elapsed.TotalMilliseconds;
+    audioTimeline.PrimeSongSources(session.FrozenAudioSongPosition);
+    timings.AudioPrimeMilliseconds = watch.Elapsed.TotalMilliseconds - phaseStarted;
+
+    phaseStarted = watch.Elapsed.TotalMilliseconds;
+    bool ready =
+      audioTimeline.RebaseAtFrozenTime(session.FrozenSongPosition)
+      && hitSounds.Prepare(gameWorld.GetNextFloorIndex(primary));
+    timings.HitSoundPrepareMilliseconds = watch.Elapsed.TotalMilliseconds - phaseStarted;
+    if (!ready)
     {
       return false;
     }
@@ -77,7 +91,17 @@ internal sealed class FrozenStartPreparer
 
     session.WarmupStartedFrame = gameWorld.CurrentFrame;
     session.Phase = FrozenStartPhase.Warming;
+    timings.PrepareMilliseconds = watch.Elapsed.TotalMilliseconds;
     return true;
+  }
+
+  private double CalibratedAudioSongPosition(double logicalSongPosition)
+  {
+    return FrozenStartTiming.CalculateCalibratedAudioSongPosition(
+      logicalSongPosition,
+      audioTimeline.Calibration,
+      audioTimeline.Pitch
+    );
   }
 
   private double CalculatePerfectSongPosition(scrPlayer player)

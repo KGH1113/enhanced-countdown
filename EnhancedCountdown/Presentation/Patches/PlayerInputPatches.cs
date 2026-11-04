@@ -17,7 +17,9 @@ internal static class FrozenPlayerUpdatePatch
   private static bool Prefix(scrPlayer __instance, object[] __args)
   {
     bool clearTargetTick = false;
-    bool runOriginal = ModCompositionRoot.Coordinator?.PreparePlayerUpdate(__instance, out clearTargetTick) ?? true;
+    object inputTick = __args.Length > 0 ? __args[0] : null;
+    bool runOriginal =
+      ModCompositionRoot.Coordinator?.PreparePlayerUpdate(__instance, inputTick, out clearTargetTick) ?? true;
     if (clearTargetTick && __args.Length > 0)
     {
       __args[0] = null;

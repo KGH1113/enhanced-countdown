@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using EnhancedCountdown.Application.Ports;
 using EnhancedCountdown.Domain.MidRun;
 
@@ -103,6 +104,7 @@ internal sealed partial class MidRunCoordinator
 
     try
     {
+      session.Timings.MusicScheduledMilliseconds = session.StartupWatch.Elapsed.TotalMilliseconds;
       if (!startPreparer.Prepare(session))
       {
         runtimeRestorer.Restore(session, restartAudio: true);
@@ -116,7 +118,7 @@ internal sealed partial class MidRunCoordinator
     }
   }
 
-  internal bool PreparePlayerUpdate(scrPlayer player, out bool clearTargetTick)
+  internal bool PreparePlayerUpdate(scrPlayer player, object inputTick, out bool clearTargetTick)
   {
     clearTargetTick = false;
     if (IsWarming)
@@ -149,7 +151,8 @@ internal sealed partial class MidRunCoordinator
     metronome.Stop("first input accepted");
     clearTargetTick = true;
     session.PendingInputPlayer = player;
-    runtimeRestorer.ReleaseAudioForInput(session);
+    session.UpdatingPlayer = player;
+    runtimeRestorer.BeginPlaybackForInput(session, gameWorld.GetSecondsSinceInput(inputTick));
     return true;
   }
 
@@ -162,23 +165,41 @@ internal sealed partial class MidRunCoordinator
     visuals.RestorePlayer(player);
     if (session.PendingInputPlayer == player)
     {
-      runtimeRestorer.RebaseTimelineForInput(session);
+      // Normally already started when the input was accepted; this covers the retried hit.
+      runtimeRestorer.BeginPlaybackForInput(session, elapsedSinceInput: 0.0);
     }
   }
 
   internal void CompletePlayerUpdate(scrPlayer player)
   {
-    if (!IsFrozen || player == null || session.PendingInputPlayer != player)
+    if (!IsFrozen || player == null)
     {
       return;
     }
-    if (!gameWorld.CanRetryHit(player))
+    if (session.UpdatingPlayer == player)
     {
-      session.ClearPendingInput();
+      session.UpdatingPlayer = null;
+    }
+    if (session.PendingInputPlayer != player)
+    {
+      return;
+    }
+    if (gameWorld.CanRetryHit(player))
+    {
+      gameWorld.Hit(player);
+    }
+    if (!IsFrozen)
+    {
       return;
     }
 
-    gameWorld.Hit(player);
+    // The input never moved the planet. Clear it so later frames do not retry without a key press,
+    // and stop the song that was scheduled when the input was accepted.
+    session.ClearPendingInput();
+    if (session.PlaybackStartedForInput)
+    {
+      ResumeFrozenWait();
+    }
   }
 
   internal void OnManualHitCompleted(scrPlayer player, bool isAuto, bool moved)
@@ -189,9 +210,13 @@ internal sealed partial class MidRunCoordinator
     }
     if (!moved)
     {
-      runtimeRestorer.RefreezeAfterRejectedInput(session);
-      MetronomePlayback? playback = metronome.Start();
-      visuals.StartPreLandingMotion(playback);
+      if (session.UpdatingPlayer == player)
+      {
+        // CompletePlayerUpdate retries this hit; keep playback scheduled so a successful retry does not
+        // re-seek the song or lose the input-time anchor.
+        return;
+      }
+      ResumeFrozenWait();
       return;
     }
 
@@ -201,7 +226,7 @@ internal sealed partial class MidRunCoordinator
 
   internal void PumpAsyncInput()
   {
-    hitSounds.Pump();
+    audioTimeline.PumpDiagnostics();
     if (!IsFrozen)
     {
       return;
@@ -347,8 +372,41 @@ internal sealed partial class MidRunCoordinator
 
     session.FrozenFrame = gameWorld.CurrentFrame;
     session.Phase = FrozenStartPhase.Frozen;
+    double metronomeStarted = session.StartupWatch.Elapsed.TotalMilliseconds;
     MetronomePlayback? playback = metronome.Start();
     visuals.StartPreLandingMotion(playback);
+    LogStartupTimings(session, session.StartupWatch.Elapsed.TotalMilliseconds - metronomeStarted);
+  }
+
+  private void ResumeFrozenWait()
+  {
+    runtimeRestorer.RefreezeAfterRejectedInput(session);
+    MetronomePlayback? playback = metronome.Start(continuePreviousGrid: true);
+    visuals.StartPreLandingMotion(playback);
+  }
+
+  private void LogStartupTimings(FrozenStartSession startedSession, double metronomeMilliseconds)
+  {
+    FrozenStartTimings timings = startedSession.Timings;
+    startedSession.StartupWatch.Stop();
+    logger.Log(
+      string.Format(
+        CultureInfo.InvariantCulture,
+        "Frozen start ready in {0:0.0} ms (game until music scheduled {1:0.0} ms; prepare {2:0.0} ms: "
+          + "{3} automatic tiles {4:0.0} ms, visuals {5:0.0} ms, song prime {6:0.0} ms, hit sounds {7:0.0} ms; "
+          + "warmup {8} frames; metronome {9:0.0} ms).",
+        startedSession.StartupWatch.Elapsed.TotalMilliseconds,
+        timings.MusicScheduledMilliseconds,
+        timings.PrepareMilliseconds,
+        timings.AutomaticTiles,
+        timings.AutomaticTilesMilliseconds,
+        timings.VisualScrubMilliseconds,
+        timings.AudioPrimeMilliseconds,
+        timings.HitSoundPrepareMilliseconds,
+        startedSession.WarmupRenderedFrames,
+        metronomeMilliseconds
+      )
+    );
   }
 
   private static bool DurationsAreStable(double previous, double current)

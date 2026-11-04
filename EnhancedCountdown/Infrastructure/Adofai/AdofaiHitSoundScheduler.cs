@@ -1,15 +1,22 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using EnhancedCountdown.Application.Ports;
-using EnhancedCountdown.Domain.MidRun;
 using HarmonyLib;
-using UnityEngine;
 
 namespace EnhancedCountdown.Infrastructure.Adofai;
 
 internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
 {
+  private const double SameTimeTolerance = 1e-6;
+
+  // Hold sounds this close to the frozen tile are captured so a loop that is still sounding when
+  // playback starts can be resumed. It covers any input offset the game allows.
+  private const double HoldCaptureHorizonSeconds = 2.0;
+
   private static readonly FieldInfo HitSoundsDataField = AccessTools.Field(typeof(scrConductor), "hitSoundsData");
   private static readonly FieldInfo NextHitSoundField = AccessTools.Field(
     typeof(scrConductor),
@@ -25,31 +32,20 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
     typeof(scrConductor),
     "nextExtraTickToSchedule"
   );
-  private static readonly FieldInfo CountdownTimesField = AccessTools.Field(typeof(scrConductor), "countdownTimes");
-  private static readonly FieldInfo PlayCountdownHihatsField = AccessTools.Field(
-    typeof(scrConductor),
-    "playCountdownHihats"
-  );
-  private static readonly FieldInfo PlayEndingCymbalField = AccessTools.Field(typeof(scrConductor), "playEndingCymbal");
 
-  private readonly ConductorHitSoundAccessor accessor;
+  // Optional: lets PlayHitTimes skip its StopAllSounds so the first tile's sounds can be scheduled first.
+  private static readonly FieldInfo PlayedHitSoundsField = AccessTools.Field(typeof(scrConductor), "playedHitSounds");
+  private static readonly Dictionary<Type, ScheduleItemFields> ItemFieldsByType = new();
+
   private readonly IModLogger logger;
+  private readonly List<CapturedSound> frozenFloorSounds = new();
   private scrConductor conductor;
-  private IList hitSounds;
-  private IList holdSounds;
-  private IList extraTicks;
-  private double[] countdownTimes;
-  private double scheduleDspTimeSong;
-  private double endingCymbalTime;
-  private ScheduledHitSound? missedHitSound;
-  private bool playCountdownHihats;
-  private bool playEndingCymbal;
+  private int frozenFloorIndex = -1;
   private bool prepared;
   private bool active;
 
-  internal AdofaiHitSoundScheduler(ConductorHitSoundAccessor accessor, IModLogger logger)
+  internal AdofaiHitSoundScheduler(IModLogger logger)
   {
-    this.accessor = accessor;
     this.logger = logger;
   }
 
@@ -58,11 +54,17 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
     return ReflectionContractIsAvailable() ? null : "the hit-sound schedule layout is incompatible";
   }
 
-  public bool Prepare()
+  public bool Prepare(int frozenFloorIndex)
   {
-    Reset();
+    ClearState();
     conductor = ADOBase.conductor;
-    if (conductor == null || !ReflectionContractIsAvailable())
+    if (
+      conductor == null
+      || !ReflectionContractIsAvailable()
+      || ADOBase.lm?.listFloors == null
+      || frozenFloorIndex <= 0
+      || frozenFloorIndex >= ADOBase.lm.listFloors.Count
+    )
     {
       conductor = null;
       return false;
@@ -70,65 +72,22 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
 
     try
     {
-      AudioManager.Instance.StopAllSounds();
-      double currentDspTime = conductor.dspTime;
-      try
-      {
-        conductor.dspTime = double.NegativeInfinity;
-        conductor.PlayHitTimes();
-      }
-      finally
-      {
-        conductor.dspTime = currentDspTime;
-      }
-
-      hitSounds = HitSoundsDataField.GetValue(conductor) as IList;
-      holdSounds = HoldSoundsDataField.GetValue(conductor) as IList;
-      extraTicks = ExtraTicksField.GetValue(conductor) as IList;
-      if (hitSounds == null || holdSounds == null || extraTicks == null)
-      {
-        throw new InvalidOperationException("The conductor sound schedule lists are unavailable.");
-      }
-
-      missedHitSound = accessor.CaptureFirstElapsed(conductor, currentDspTime);
-      SetFirstFutureIndex(hitSounds, NextHitSoundField, currentDspTime);
-      SetFirstFutureIndex(holdSounds, NextHoldSoundField, currentDspTime);
-      SetFirstFutureIndex(extraTicks, NextExtraTickField, currentDspTime);
-
-      countdownTimes = (CountdownTimesField.GetValue(conductor) as double[])?.Clone() as double[];
-      playCountdownHihats = PlayCountdownHihatsField.GetValue(conductor) is true && !conductor.fastTakeoff;
-      playEndingCymbal = PlayEndingCymbalField.GetValue(conductor) is true;
-      endingCymbalTime = CalculateEndingCymbalTime();
-      scheduleDspTimeSong = conductor.dspTimeSong;
+      this.frozenFloorIndex = frozenFloorIndex;
+      CaptureFrozenFloorSounds();
+      ParkSchedules();
       prepared = true;
       active = false;
-
-      // PlayHitTimes schedules the short countdown and ending cymbal immediately.
-      // Keep only the captured schedule while the listener and timeline are frozen.
-      AudioManager.Instance.StopAllSounds();
       return true;
     }
     catch (Exception exception)
     {
       logger.LogError("Could not prepare the frozen hit-sound schedule", exception);
-      scrConductor failedConductor = conductor;
       ClearState();
-      if (failedConductor != null)
-      {
-        try
-        {
-          failedConductor.PlayHitTimes();
-        }
-        catch (Exception restoreException)
-        {
-          logger.LogError("Could not restore hit sounds after schedule preparation failed", restoreException);
-        }
-      }
       return false;
     }
   }
 
-  public void Activate()
+  public void Activate(double earliestPlaybackDspTime)
   {
     if (!prepared || active || conductor == null)
     {
@@ -137,25 +96,30 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
 
     try
     {
-      double shift = conductor.dspTimeSong - scheduleDspTimeSong;
-      ShiftSchedule(hitSounds, shift);
-      ShiftSchedule(holdSounds, shift);
-      ShiftSchedule(extraTicks, shift);
-      ShiftCountdownTimes(shift);
-      endingCymbalTime += shift;
-      scheduleDspTimeSong = conductor.dspTimeSong;
-
-      double now = Math.Max(conductor.dspTime, AudioSettings.dspTime);
-      if (missedHitSound is ScheduledHitSound hitSound)
+      Stopwatch watch = Stopwatch.StartNew();
+      double frozenFloorTime = FloorDspTime(frozenFloorIndex);
+      bool replayBeforeRebuild = PlayedHitSoundsField != null;
+      if (replayBeforeRebuild)
       {
-        AudioManager.Play("snd" + hitSound.SoundName, now, conductor.hitSoundGroup, hitSound.Volume);
+        ReplayFrozenFloorSounds(frozenFloorTime, earliestPlaybackDspTime);
       }
-      ScheduleDirectSounds(now);
+      RebuildScheduleAfter(earliestPlaybackDspTime, keepLiveSounds: replayBeforeRebuild);
+      if (!replayBeforeRebuild)
+      {
+        ReplayFrozenFloorSounds(frozenFloorTime, earliestPlaybackDspTime);
+      }
       active = true;
+      logger.Log(
+        string.Format(
+          CultureInfo.InvariantCulture,
+          "First input: hit-sound schedule rebuilt in {0:0.0} ms.",
+          watch.Elapsed.TotalMilliseconds
+        )
+      );
     }
     catch (Exception exception)
     {
-      logger.LogError("Could not activate the prepared hit-sound schedule", exception);
+      logger.LogError("Could not activate the frozen hit-sound schedule", exception);
       scrConductor failedConductor = conductor;
       ClearState();
       try
@@ -176,37 +140,37 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
       return;
     }
     AudioManager.Instance.StopAllSounds();
+    try
+    {
+      ParkSchedules();
+    }
+    catch (Exception exception)
+    {
+      logger.LogError("Could not park the hit-sound schedule after a rejected input", exception);
+    }
     active = false;
   }
 
   public void Reset(bool keepInstalledSchedule = false)
   {
-    if (!prepared)
+    // Rebuild against the current clock even when preparation stopped early, so the native lists
+    // never keep times from before the timeline was rebased.
+    scrConductor target = conductor ?? ADOBase.conductor;
+    ClearState();
+    if (keepInstalledSchedule || target == null)
     {
-      ClearState();
       return;
     }
 
-    scrConductor preparedConductor = conductor;
-    bool rebuildNativeSchedule = !keepInstalledSchedule && preparedConductor != null;
-    ClearState();
-    if (rebuildNativeSchedule)
+    try
     {
-      try
-      {
-        AudioManager.Instance.StopAllSounds();
-        preparedConductor.PlayHitTimes();
-      }
-      catch (Exception exception)
-      {
-        logger.LogError("Could not restore the native hit-sound schedule", exception);
-      }
+      AudioManager.Instance.StopAllSounds();
+      target.PlayHitTimes();
     }
-  }
-
-  public void Pump()
-  {
-    // Once activated, scrConductor consumes the prepared private lists normally.
+    catch (Exception exception)
+    {
+      logger.LogError("Could not restore the native hit-sound schedule", exception);
+    }
   }
 
   private static bool ReflectionContractIsAvailable()
@@ -216,131 +180,258 @@ internal sealed class AdofaiHitSoundScheduler : IHitSoundScheduler
       && HoldSoundsDataField != null
       && NextHoldSoundField != null
       && ExtraTicksField != null
-      && NextExtraTickField != null
-      && CountdownTimesField != null
-      && PlayCountdownHihatsField != null
-      && PlayEndingCymbalField != null;
+      && NextExtraTickField != null;
   }
 
-  private void SetFirstFutureIndex(IList schedule, FieldInfo indexField, double currentDspTime)
+  private void CaptureFrozenFloorSounds()
   {
-    int index = 0;
-    while (index < schedule.Count && ReadTime(schedule[index]) <= currentDspTime)
+    // Build the full schedule (PlayHitTimes drops entries at or before dspTime) to find the sounds of
+    // the tile the first input lands on. The listener is paused while frozen, so the countdown and
+    // cymbal that PlayHitTimes schedules immediately are silent until StopAllSounds removes them.
+    double currentDspTime = conductor.dspTime;
+    try
     {
-      index++;
+      conductor.dspTime = double.NegativeInfinity;
+      conductor.PlayHitTimes();
     }
-    indexField.SetValue(conductor, index);
+    finally
+    {
+      conductor.dspTime = currentDspTime;
+    }
+    AudioManager.Instance.StopAllSounds();
+
+    double frozenFloorTime = FloorDspTime(frozenFloorIndex);
+    CaptureHitSounds(ReadSchedule(HitSoundsDataField), frozenFloorTime);
+    CaptureHoldSounds(ReadSchedule(HoldSoundsDataField), frozenFloorTime);
   }
 
-  private static void ShiftSchedule(IList schedule, double shift)
+  private void CaptureHitSounds(IList hitSounds, double frozenFloorTime)
   {
-    if (schedule == null || shift == 0.0)
+    GetFrozenFloorHitWindow(frozenFloorTime, out double windowStart, out double windowEnd);
+    foreach (object item in hitSounds)
     {
-      return;
-    }
-
-    for (int index = 0; index < schedule.Count; index++)
-    {
-      object item = schedule[index];
       if (item == null)
       {
         continue;
       }
-      Type itemType = item.GetType();
-      FieldInfo timeField = AccessTools.Field(itemType, "time");
-      if (timeField == null)
+      ScheduleItemFields fields = ScheduleItemFields.For(item.GetType());
+      double time = fields.ReadTime(item);
+      if (time > windowEnd)
       {
-        throw new MissingFieldException(itemType.FullName, "time");
+        break;
       }
-      timeField.SetValue(item, (double)timeField.GetValue(item) + shift);
-      FieldInfo endTimeField = AccessTools.Field(itemType, "endTime");
-      if (endTimeField != null)
+      if (time < windowStart || fields.HitSound == null || fields.Volume == null)
       {
-        double endTime = (double)endTimeField.GetValue(item);
-        if (endTime > 0.0)
+        continue;
+      }
+
+      frozenFloorSounds.Add(
+        new CapturedSound(
+          string.Concat("snd", fields.HitSound.GetValue(item).ToString()),
+          time - frozenFloorTime,
+          relativeEndTime: null,
+          (float)fields.Volume.GetValue(item)
+        )
+      );
+    }
+  }
+
+  private void CaptureHoldSounds(IList holdSounds, double frozenFloorTime)
+  {
+    foreach (object item in holdSounds)
+    {
+      if (item == null)
+      {
+        continue;
+      }
+      ScheduleItemFields fields = ScheduleItemFields.For(item.GetType());
+      if (fields.Name == null || fields.Volume == null)
+      {
+        continue;
+      }
+
+      double relativeTime = fields.ReadTime(item) - frozenFloorTime;
+      double endTime = fields.EndTime != null ? (double)fields.EndTime.GetValue(item) : -1.0;
+      bool isLoop = endTime > 0.0;
+      bool capture = isLoop
+        ? relativeTime <= HoldCaptureHorizonSeconds && endTime - frozenFloorTime >= -HoldCaptureHorizonSeconds
+        : Math.Abs(relativeTime) <= SameTimeTolerance;
+      if (capture)
+      {
+        frozenFloorSounds.Add(
+          new CapturedSound(
+            fields.Name.GetValue(item) as string,
+            relativeTime,
+            isLoop ? endTime - frozenFloorTime : null,
+            (float)fields.Volume.GetValue(item)
+          )
+        );
+      }
+    }
+  }
+
+  private void GetFrozenFloorHitWindow(double frozenFloorTime, out double windowStart, out double windowEnd)
+  {
+    // PlayHitTimes schedules a tile's hit sound at its floor time minus a per-sound attack offset, and
+    // planet-count sounds at the floor time itself. Neighbouring floors bound the window; floors at the
+    // same time (midspins) belong to the same input.
+    double largestOffset = 0.0;
+    double smallestOffset = 0.0;
+    Dictionary<HitSound, double> offsets = ADOBase.gc?.hitSoundOffsets;
+    if (offsets != null)
+    {
+      foreach (double offset in offsets.Values)
+      {
+        largestOffset = Math.Max(largestOffset, offset);
+        smallestOffset = Math.Min(smallestOffset, offset);
+      }
+    }
+
+    windowStart = frozenFloorTime - largestOffset - SameTimeTolerance;
+    windowEnd = frozenFloorTime - smallestOffset + SameTimeTolerance;
+    int floorCount = ADOBase.lm.listFloors.Count;
+    int previous = frozenFloorIndex - 1;
+    while (previous >= 0 && Math.Abs(FloorDspTime(previous) - frozenFloorTime) <= SameTimeTolerance)
+    {
+      previous--;
+    }
+    if (previous >= 0)
+    {
+      windowStart = Math.Max(windowStart, FloorDspTime(previous) + SameTimeTolerance);
+    }
+    int next = frozenFloorIndex + 1;
+    while (next < floorCount && Math.Abs(FloorDspTime(next) - frozenFloorTime) <= SameTimeTolerance)
+    {
+      next++;
+    }
+    if (next < floorCount)
+    {
+      windowEnd = Math.Min(windowEnd, FloorDspTime(next) - SameTimeTolerance);
+    }
+  }
+
+  private void ReplayFrozenFloorSounds(double frozenFloorTime, double playbackTime)
+  {
+    // Sounds after playback starts come from the rebuilt native schedule. Elapsed ones are played at
+    // the start; the rest of the elapsed audio is skipped together with the song.
+    foreach (CapturedSound sound in frozenFloorSounds)
+    {
+      if (frozenFloorTime + sound.RelativeTime > playbackTime || string.IsNullOrEmpty(sound.Name))
+      {
+        continue;
+      }
+      if (sound.RelativeEndTime is double relativeEndTime)
+      {
+        double endTime = frozenFloorTime + relativeEndTime;
+        if (endTime > playbackTime)
         {
-          endTimeField.SetValue(item, endTime + shift);
+          conductor.PlayWithEndTime(sound.Name, playbackTime, endTime, sound.Volume);
         }
+        continue;
       }
-      schedule[index] = item;
+      AudioManager.Play(sound.Name, playbackTime, conductor.hitSoundGroup, sound.Volume);
     }
   }
 
-  private void ShiftCountdownTimes(double shift)
+  private void RebuildScheduleAfter(double playbackTime, bool keepLiveSounds)
   {
-    if (countdownTimes == null || shift == 0.0)
+    // With dspTime at the playback start, PlayHitTimes keeps only later entries and schedules the
+    // countdown hats and ending cymbal exactly as the native game would.
+    double currentDspTime = conductor.dspTime;
+    try
     {
-      return;
-    }
-    for (int index = 0; index < countdownTimes.Length; index++)
-    {
-      if (countdownTimes[index] > 0.0)
+      conductor.dspTime = playbackTime;
+      if (keepLiveSounds)
       {
-        countdownTimes[index] += shift;
+        PlayedHitSoundsField.SetValue(conductor, false);
       }
+      conductor.PlayHitTimes();
     }
-    CountdownTimesField.SetValue(conductor, countdownTimes);
-  }
-
-  private void ScheduleDirectSounds(double now)
-  {
-    if (playCountdownHihats && countdownTimes != null)
+    finally
     {
-      foreach (double countdownTime in countdownTimes)
-      {
-        if (countdownTime > now)
-        {
-          AudioManager.Play("sndHat", countdownTime, conductor.hitSoundGroup, conductor.hitSoundVolume, 10);
-        }
-      }
-    }
-    if (playEndingCymbal && endingCymbalTime > now)
-    {
-      AudioManager.Play("sndCymbalCrash", endingCymbalTime, conductor.hitSoundGroup, conductor.hitSoundVolume, 10);
+      conductor.dspTime = currentDspTime;
     }
   }
 
-  private double CalculateEndingCymbalTime()
+  private void ParkSchedules()
   {
-    if (!playEndingCymbal || ADOBase.lm?.listFloors == null || ADOBase.lm.listFloors.Count == 0)
+    // Keeps the conductor from consuming lists built against another clock while frozen.
+    NextHitSoundField.SetValue(conductor, ReadSchedule(HitSoundsDataField).Count);
+    NextHoldSoundField.SetValue(conductor, ReadSchedule(HoldSoundsDataField).Count);
+    NextExtraTickField.SetValue(conductor, ReadSchedule(ExtraTicksField).Count);
+  }
+
+  private IList ReadSchedule(FieldInfo field)
+  {
+    if (field.GetValue(conductor) is not IList schedule)
     {
-      return 0.0;
+      throw new InvalidOperationException(string.Concat("The conductor schedule '", field.Name, "' is unavailable."));
     }
-    int floorIndex = GCS.practiceMode
-      ? Math.Min(GCS.checkpointNum + GCS.practiceLength, ADOBase.lm.listFloors.Count - 1)
-      : ADOBase.lm.listFloors.Count - 1;
+    return schedule;
+  }
+
+  private double FloorDspTime(int floorIndex)
+  {
     return conductor.dspTimeSong
-      + ADOBase.lm.listFloors[floorIndex].entryTimePitchAdj
-      + conductor.addoffset / conductor.song.pitch;
-  }
-
-  private static double ReadTime(object item)
-  {
-    if (item == null)
-    {
-      return double.PositiveInfinity;
-    }
-    FieldInfo timeField = AccessTools.Field(item.GetType(), "time");
-    if (timeField == null)
-    {
-      throw new MissingFieldException(item.GetType().FullName, "time");
-    }
-    return (double)timeField.GetValue(item);
+      + conductor.addoffset / (double)conductor.song.pitch
+      + ADOBase.lm.listFloors[floorIndex].entryTimePitchAdj;
   }
 
   private void ClearState()
   {
     conductor = null;
-    hitSounds = null;
-    holdSounds = null;
-    extraTicks = null;
-    countdownTimes = null;
-    scheduleDspTimeSong = 0.0;
-    endingCymbalTime = 0.0;
-    missedHitSound = null;
-    playCountdownHihats = false;
-    playEndingCymbal = false;
+    frozenFloorIndex = -1;
+    frozenFloorSounds.Clear();
     prepared = false;
     active = false;
+  }
+
+  private readonly struct CapturedSound
+  {
+    internal CapturedSound(string name, double relativeTime, double? relativeEndTime, float volume)
+    {
+      Name = name;
+      RelativeTime = relativeTime;
+      RelativeEndTime = relativeEndTime;
+      Volume = volume;
+    }
+
+    internal string Name { get; }
+    internal double RelativeTime { get; }
+    internal double? RelativeEndTime { get; }
+    internal float Volume { get; }
+  }
+
+  private sealed class ScheduleItemFields
+  {
+    private ScheduleItemFields(Type itemType)
+    {
+      Time = AccessTools.Field(itemType, "time") ?? throw new MissingFieldException(itemType.FullName, "time");
+      EndTime = AccessTools.Field(itemType, "endTime");
+      HitSound = AccessTools.Field(itemType, "hitSound");
+      Name = AccessTools.Field(itemType, "name");
+      Volume = AccessTools.Field(itemType, "volume");
+    }
+
+    internal FieldInfo Time { get; }
+    internal FieldInfo EndTime { get; }
+    internal FieldInfo HitSound { get; }
+    internal FieldInfo Name { get; }
+    internal FieldInfo Volume { get; }
+
+    internal static ScheduleItemFields For(Type itemType)
+    {
+      if (!ItemFieldsByType.TryGetValue(itemType, out ScheduleItemFields fields))
+      {
+        fields = new ScheduleItemFields(itemType);
+        ItemFieldsByType[itemType] = fields;
+      }
+      return fields;
+    }
+
+    internal double ReadTime(object item)
+    {
+      return (double)Time.GetValue(item);
+    }
   }
 }
