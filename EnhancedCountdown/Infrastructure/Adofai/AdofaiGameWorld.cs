@@ -27,6 +27,10 @@ internal sealed class AdofaiGameWorld : IGameWorld
     {
       return "TUFReplay playback is active";
     }
+    if (OrbitRenderActivityDetector.IsRendering())
+    {
+      return "OrbitRender is rendering";
+    }
     return null;
   }
 
